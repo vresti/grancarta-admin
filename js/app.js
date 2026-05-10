@@ -338,9 +338,12 @@ const AdminApp = (function() {
           type: 'success',
           title: 'Empresa creada',
           subtitle: function(d) {
-            return (d.nombre_comercial || 'Tu empresa') + ' ya está registrada en GranCarta. ¡Ahora podemos configurar tu local!';
+            return (d.nombre_comercial || 'Tu empresa') + ' ya está registrada. El siguiente paso es configurar tu primer local — la dirección física donde está tu negocio.';
           },
-          nextLabel: 'Volver al panel →'
+          nextLabel: 'Crear primer local →',
+          // En el success agregamos un segundo botón "Más tarde" para volver al dashboard
+          showSkipButton: true,
+          skipLabel: 'Más tarde'
         }
       ],
 
@@ -357,7 +360,7 @@ const AdminApp = (function() {
           return false;
         }
 
-        // Guardar el id_empresa en data por si lo necesitamos en success
+        // Guardar el id_empresa en data para usarlo en encadenamiento
         data._id_empresa = resp.id_empresa;
 
         AdminUI.toast('Empresa creada exitosamente', 'success');
@@ -365,7 +368,168 @@ const AdminApp = (function() {
       },
 
       onSuccessNext: function(data) {
-        // Refrescar dashboard y volver
+        // Encadenar: arrancar wizard de Local con la empresa recién creada
+        iniciarWizardLocal({
+          id_empresa: data._id_empresa,
+          nombreEmpresa: data.nombre_comercial
+        });
+      },
+
+      onSuccessSkip: function(data) {
+        // El usuario eligió "Más tarde" — refrescar dashboard
+        cargarDashboard();
+      }
+    });
+  }
+
+
+  // ============================================================
+  // WIZARD DE LOCAL
+  // ============================================================
+
+  /**
+   * Inicia el wizard de Local.
+   *
+   * @param {Object} opciones
+   * @param {string} opciones.id_empresa - ID de la empresa donde se crea el local (obligatorio)
+   * @param {string} [opciones.nombreEmpresa] - Para mostrar en la bienvenida
+   */
+  function iniciarWizardLocal(opciones) {
+    if (!opciones || !opciones.id_empresa) {
+      AdminUI.toast('Falta indicar la empresa', 'error');
+      return;
+    }
+
+    const idEmpresa = opciones.id_empresa;
+    const nombreEmpresa = opciones.nombreEmpresa || 'tu empresa';
+
+    Wizard.start({
+      id: 'local',
+      initialData: { id_empresa: idEmpresa },
+      steps: [
+        {
+          type: 'welcome',
+          icon: '📍',
+          title: 'Configuremos tu primer local',
+          subtitle: 'Ahora vamos a cargar la dirección física de ' + nombreEmpresa + '. Solo el nombre es obligatorio — el resto lo podés saltar y completar después.'
+        },
+        {
+          type: 'input',
+          eyebrow: 'Paso 1 de 6',
+          title: '¿Cómo se llama esta sucursal?',
+          subtitle: 'El nombre interno con el que la vas a identificar.',
+          field: 'nombre',
+          placeholder: 'Sucursal Centro',
+          hint: 'Si tenés un solo local, podés ponerle "Local principal" o el nombre del bar.',
+          validate: function(d) { return AdminUI.validar.longitudMinima(d.nombre, 2); }
+        },
+        {
+          type: 'input',
+          eyebrow: 'Paso 2 de 6 · Opcional',
+          title: '¿Dónde queda?',
+          subtitle: 'La dirección de la calle (sin ciudad, eso viene después).',
+          field: 'direccion',
+          placeholder: 'Av. Corrientes 1234',
+          optional: true
+        },
+        {
+          type: 'input',
+          eyebrow: 'Paso 3 de 6 · Opcional',
+          title: 'Ciudad',
+          subtitle: '¿En qué ciudad está tu local?',
+          field: 'ciudad',
+          placeholder: 'Buenos Aires',
+          optional: true
+        },
+        {
+          type: 'input',
+          eyebrow: 'Paso 4 de 6 · Opcional',
+          title: 'Provincia',
+          subtitle: '¿Y la provincia?',
+          field: 'provincia',
+          placeholder: 'CABA',
+          optional: true
+        },
+        {
+          type: 'input',
+          eyebrow: 'Paso 5 de 6 · Opcional',
+          title: 'Teléfono del local',
+          subtitle: 'Por si querés que tu cliente pueda llamar al local desde la carta digital.',
+          field: 'telefono',
+          placeholder: '+54 11 4567 8900',
+          inputType: 'tel',
+          optional: true,
+          hint: 'Lo podés cambiar o agregar después desde el panel.'
+        },
+        {
+          type: 'input',
+          eyebrow: 'Paso 6 de 6 · Opcional',
+          title: 'Mail del local',
+          subtitle: 'Si el local tiene un mail propio (distinto al de la empresa).',
+          field: 'mail',
+          placeholder: 'centro@lacantina.com',
+          inputType: 'email',
+          optional: true,
+          validationMessage: function(d, valid) {
+            if (!d.mail) return { text: '' };
+            if (AdminUI.validar.mail(d.mail)) return { text: '✓ Mail válido', type: 'success' };
+            return { text: '' };
+          }
+        },
+        {
+          type: 'confirm',
+          eyebrow: 'Confirmación',
+          title: 'Revisemos los datos del local',
+          subtitle: 'Si todo está correcto, creamos el local. Para cambiar algo, volvé al paso correspondiente.',
+          fields: [
+            { label: 'Nombre', field: 'nombre' },
+            { label: 'Dirección', field: 'direccion' },
+            { label: 'Ciudad', field: 'ciudad' },
+            { label: 'Provincia', field: 'provincia' },
+            { label: 'Teléfono', field: 'telefono' },
+            { label: 'Mail', field: 'mail' }
+          ],
+          validate: function(d) {
+            return AdminUI.validar.longitudMinima(d.nombre, 2);
+          }
+        },
+        {
+          type: 'success',
+          title: 'Local creado',
+          subtitle: function(d) {
+            return (d.nombre || 'Tu local') + ' está listo. Próximo paso: cargar las mesas y la carta.';
+          },
+          nextLabel: 'Volver al panel →'
+        }
+      ],
+
+      onComplete: async function(data) {
+        // Limpiar campos vacíos antes de mandar
+        const payload = {
+          id_empresa: idEmpresa,
+          nombre: data.nombre
+        };
+        if (data.direccion) payload.direccion = data.direccion;
+        if (data.ciudad) payload.ciudad = data.ciudad;
+        if (data.provincia) payload.provincia = data.provincia;
+        if (data.telefono) payload.telefono = data.telefono;
+        if (data.mail) payload.mail = data.mail;
+
+        const resp = await AdminAPI.localCrear(payload);
+
+        if (!resp.ok) {
+          AdminUI.toast(resp.error || 'Error creando el local', 'error');
+          return false;
+        }
+
+        data._id_local = resp.id_local;
+        AdminUI.toast('Local creado exitosamente', 'success');
+        return true;
+      },
+
+      onSuccessNext: function(data) {
+        // Por ahora vuelve al dashboard.
+        // Próxima sesión: aquí ofreceríamos crear las mesas.
         cargarDashboard();
       }
     });
@@ -383,6 +547,7 @@ const AdminApp = (function() {
     volverALoginMail,
     cerrarSesion,
     iniciarWizardEmpresa,
+    iniciarWizardLocal,
     abrirEmpresa
   };
 
