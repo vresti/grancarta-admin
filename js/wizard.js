@@ -235,9 +235,13 @@ const Wizard = (function() {
 
       input.addEventListener('input', handler);
       input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && state.config.steps[state.currentStep].validate(state.data)) {
-          e.preventDefault();
-          next();
+        if (e.key === 'Enter') {
+          const s = state.config.steps[state.currentStep];
+          // En opcional: avanzar siempre. En obligatorio: solo si valida.
+          if (s.optional || !s.validate || s.validate(state.data)) {
+            e.preventDefault();
+            next();
+          }
         }
       });
 
@@ -314,7 +318,7 @@ const Wizard = (function() {
   }
 
   /**
-   * Renderiza los botones de acción (atrás / siguiente).
+   * Renderiza los botones de acción (atrás / siguiente / skip).
    */
   function renderActions(step) {
     const container = document.getElementById('wizard-actions');
@@ -324,6 +328,10 @@ const Wizard = (function() {
     // Botón atrás (no en welcome ni success)
     if (step.type !== 'welcome' && step.type !== 'success' && state.currentStep > 0) {
       html += '<button class="btn btn-secondary" id="wizard-back-btn">← Atrás</button>';
+    } else if (step.type === 'success' && step.showSkipButton) {
+      // En success con encadenado opcional: el skip va donde estaría el botón "atrás"
+      html += '<button class="btn btn-secondary" id="wizard-skip-btn">' +
+              AdminUI.escapeHtml(step.skipLabel || 'Más tarde') + '</button>';
     } else {
       html += '<div></div>';
     }
@@ -342,12 +350,22 @@ const Wizard = (function() {
       nextLabel = 'Siguiente →';
     }
 
-    html += '<button class="btn btn-primary" id="wizard-next-btn">' + AdminUI.escapeHtml(nextLabel) + '</button>';
+    html += '<button class="btn" id="wizard-next-btn">' + AdminUI.escapeHtml(nextLabel) + '</button>';
 
     container.innerHTML = html;
 
     document.getElementById('wizard-back-btn') &&
       document.getElementById('wizard-back-btn').addEventListener('click', back);
+
+    document.getElementById('wizard-skip-btn') &&
+      document.getElementById('wizard-skip-btn').addEventListener('click', function() {
+        const cfg = state.config;
+        if (cfg.onSuccessSkip) {
+          cfg.onSuccessSkip(state.data);
+        } else {
+          AdminUI.mostrarPantalla('screen-dashboard');
+        }
+      });
 
     document.getElementById('wizard-next-btn').addEventListener('click', next);
 
@@ -356,13 +374,35 @@ const Wizard = (function() {
 
   /**
    * Actualiza el estado disabled del botón "siguiente".
+   *
+   * Para steps opcionales (step.optional === true):
+   *  - Si el campo está vacío: botón "Saltar →" (gris/secondary)
+   *  - Si tiene contenido: botón "Siguiente →" (azul/primary)
+   *  - Nunca está deshabilitado
+   *
+   * Para steps obligatorios:
+   *  - Disabled hasta que el campo sea válido
    */
   function updateNextButton() {
     const btn = document.getElementById('wizard-next-btn');
     if (!btn) return;
     const step = state.config.steps[state.currentStep];
-    const valid = step.validate ? step.validate(state.data) : true;
-    btn.disabled = !valid;
+
+    if (step.optional) {
+      // Step opcional: nunca disabled, label cambia según contenido
+      btn.disabled = false;
+      const tieneContenido = step.field && state.data[step.field] && String(state.data[step.field]).trim().length > 0;
+      const label = tieneContenido ? (step.nextLabel || 'Siguiente →') : (step.skipLabel || 'Saltar →');
+      btn.textContent = label;
+      btn.classList.toggle('btn-primary', tieneContenido);
+      btn.classList.toggle('btn-secondary', !tieneContenido);
+    } else {
+      // Step obligatorio: disabled hasta validar, mantiene btn-primary
+      const valid = step.validate ? step.validate(state.data) : true;
+      btn.disabled = !valid;
+      btn.classList.add('btn-primary');
+      btn.classList.remove('btn-secondary');
+    }
   }
 
   /**
@@ -373,7 +413,9 @@ const Wizard = (function() {
     const cfg = state.config;
     const step = cfg.steps[state.currentStep];
 
-    if (step.validate && !step.validate(state.data)) return;
+    // En steps obligatorios, requerir validación
+    // En steps opcionales, permitir avanzar aunque el campo esté vacío
+    if (!step.optional && step.validate && !step.validate(state.data)) return;
 
     if (step.type === 'confirm') {
       // Ejecutar onComplete
