@@ -1,0 +1,110 @@
+/*
+ * ============================================================
+ * GRANCARTA ADMIN - Cliente API del Backend GAS
+ * ============================================================
+ */
+
+const AdminAPI = (function() {
+
+  // URL del Web App de GAS. Si cambia el deployment, actualizar acá.
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwFY5spQFAZHuXgwtHtuqgZG7oSlr-NhryNG90iNSHjQyNaxnM8AHA03fKDOa12x6k7/exec';
+
+  /**
+   * Llamada genérica al backend.
+   * Si hay JWT en localStorage, lo manda en params._token (también queda en root para compatibilidad).
+   */
+  async function llamar(accion, params = {}) {
+    const token = localStorage.getItem('admin_jwt');
+    const paramsConToken = token ? { ...params, _token: token } : params;
+
+    try {
+      const respuesta = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          accion,
+          params: paramsConToken,
+          token: token
+        })
+      });
+
+      if (!respuesta.ok) {
+        throw new Error('HTTP ' + respuesta.status);
+      }
+
+      return await respuesta.json();
+    } catch (err) {
+      console.error('[API]', accion, err);
+      return {
+        ok: false,
+        error: 'Sin conexión con el servidor. Revisá tu internet.'
+      };
+    }
+  }
+
+  return {
+
+    // ---- Auth ----
+    solicitarCodigo(mail) {
+      return llamar('auth_solicitarCodigo', { mail });
+    },
+
+    verificarCodigo(mail, codigo) {
+      return llamar('auth_verificarCodigo', { mail, codigo });
+    },
+
+    cerrarSesion() {
+      return llamar('auth_cerrarSesion', {});
+    },
+
+    obtenerMiSesion() {
+      return llamar('auth_obtenerMiSesion', {});
+    },
+
+    // ---- Cuenta ----
+    obtenerEstructura() {
+      return llamar('cuenta_obtenerEstructura', {});
+    },
+
+    // ---- Empresas ----
+    empresaCrear(datos) {
+      return llamar('empresa_crear', datos);
+    },
+
+    empresaListar() {
+      return llamar('empresa_listar', {});
+    },
+
+    empresaObtener(idEmpresa) {
+      return llamar('empresa_obtener', { id_empresa: idEmpresa });
+    },
+
+    empresaActualizar(idEmpresa, cambios) {
+      return llamar('empresa_actualizar', {
+        id_empresa: idEmpresa,
+        ...cambios
+      });
+    },
+
+    // ---- Locales ----
+    localCrear(datos) {
+      return llamar('local_crear', datos);
+    },
+
+    localListar(idEmpresa = null) {
+      const params = idEmpresa ? { id_empresa: idEmpresa } : {};
+      return llamar('local_listar', params);
+    },
+
+    localObtener(idLocal) {
+      return llamar('local_obtener', { id_local: idLocal });
+    },
+
+    localActualizar(idLocal, cambios) {
+      return llamar('local_actualizar', {
+        id_local: idLocal,
+        ...cambios
+      });
+    }
+  };
+
+})();
