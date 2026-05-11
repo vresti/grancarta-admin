@@ -256,24 +256,399 @@ const AdminApp = (function() {
     let html = '';
     empresas.forEach(function(e) {
       const localesDeEmpresa = locales.filter(function(l) { return l.Id_Empresa === e.Id_Empresa; });
+
+      // Bloque de la empresa con sus locales adentro
       html += `
-        <button class="empresa-card" onclick="abrirEmpresa('${AdminUI.escapeHtml(e.Id_Empresa)}')">
-          <div class="empresa-card-name">${AdminUI.escapeHtml(e.Nombre_Comercial)}</div>
-          <div class="empresa-card-razon">${AdminUI.escapeHtml(e.Razon_Social)}</div>
-          <div class="empresa-card-meta">
-            <span class="empresa-card-meta-item">📍 ${localesDeEmpresa.length} local(es)</span>
-            <span class="empresa-card-meta-item">${AdminUI.escapeHtml(e.CUIT || '')}</span>
+        <div class="empresa-block">
+          <div class="empresa-block-header">
+            <div class="empresa-block-info">
+              <div class="empresa-block-name">${AdminUI.escapeHtml(e.Nombre_Comercial)}</div>
+              <div class="empresa-block-meta">
+                ${AdminUI.escapeHtml(e.Razon_Social)} · ${AdminUI.escapeHtml(e.CUIT || '')}
+              </div>
+            </div>
+            <div class="empresa-block-actions">
+              <span class="empresa-block-locales-count">${localesDeEmpresa.length} local(es)</span>
+            </div>
           </div>
-        </button>
       `;
+
+      if (localesDeEmpresa.length === 0) {
+        html += `
+          <div class="empresa-block-empty">
+            <span>📍 Sin locales todavía</span>
+          </div>
+        `;
+      } else {
+        html += '<div class="locales-list">';
+        localesDeEmpresa.forEach(function(l) {
+          html += `
+            <div class="local-card">
+              <div class="local-card-info">
+                <div class="local-card-name">${AdminUI.escapeHtml(l.Nombre)}</div>
+                <div class="local-card-meta">
+                  📍 ${AdminUI.escapeHtml(l.Direccion || 'Sin dirección')} ·
+                  ${AdminUI.escapeHtml(l.Ciudad || '')}
+                </div>
+              </div>
+              <div class="local-card-actions">
+                <button class="btn btn-secondary btn-sm"
+                        onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(e.Nombre_Comercial)}')">
+                  📋 Cartas
+                </button>
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      html += '</div>';  // /empresa-block
     });
 
     container.innerHTML = html;
   }
 
   function abrirEmpresa(idEmpresa) {
-    // Por ahora solo toast - en próxima sesión: pantalla de detalle de empresa
-    AdminUI.toast('Próximamente: pantalla de detalle de empresa', 'info');
+    // Pantalla de detalle de empresa - próxima sesión
+    AdminUI.toast('Pronto: pantalla de detalle de empresa', 'info');
+  }
+
+  function volverADashboard() {
+    state.cartasContexto = null;
+    AdminUI.mostrarPantalla('screen-dashboard');
+  }
+
+
+  // ============================================================
+  // CARTAS DEL LOCAL
+  // ============================================================
+
+  async function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
+    state.cartasContexto = {
+      idLocal: idLocal,
+      idEmpresa: idEmpresa,
+      nombreLocal: nombreLocal,
+      nombreEmpresa: nombreEmpresa,
+      cartas: []
+    };
+
+    document.getElementById('cartas-titulo').textContent = nombreLocal;
+    document.getElementById('cartas-subtitulo').textContent = nombreEmpresa;
+
+    AdminUI.mostrarPantalla('screen-cartas');
+    await cargarCartas();
+  }
+
+  async function cargarCartas() {
+    if (!state.cartasContexto) return;
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.cartaListar(state.cartasContexto.idEmpresa);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cargar las cartas', 'error');
+      return;
+    }
+
+    state.cartasContexto.cartas = resp.cartas || [];
+    renderCartas();
+  }
+
+  function renderCartas() {
+    const cartas = state.cartasContexto.cartas;
+    const container = document.getElementById('cartas-list');
+    document.getElementById('cartas-count').textContent = cartas.length;
+
+    if (cartas.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <div class="empty-state-title">No hay cartas todavía</div>
+          <div class="empty-state-detail">Creá la primera carta de este local. Después podrás agregar secciones y productos.</div>
+          <button class="btn btn-primary" onclick="abrirModalCartaNueva()">+ Crear primera carta</button>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    cartas.forEach(function(c) {
+      const esActiva = c.Estado === 'activa';
+      const badgeClass = esActiva ? 'is-active' : (c.Estado === 'borrador' ? 'is-draft' : '');
+      const redondeoLabel = (c.Redondeo === 'sin') ? 'sin redondear' :
+                            (c.Redondeo ? 'redondeo $' + c.Redondeo : 'redondeo $10');
+
+      html += `
+        <div class="carta-card ${esActiva ? 'is-active' : ''}">
+          <div class="carta-card-header">
+            <div class="carta-card-info">
+              <div class="carta-card-name">
+                ${esActiva ? '<span class="carta-star">⭐</span>' : ''}
+                ${AdminUI.escapeHtml(c.Nombre)}
+              </div>
+              ${c.Descripcion ? '<div class="carta-card-desc">' + AdminUI.escapeHtml(c.Descripcion) + '</div>' : ''}
+              <div class="carta-card-meta">
+                <span class="carta-badge ${badgeClass}">${AdminUI.escapeHtml(c.Estado)}</span>
+                <span class="carta-meta-item">${redondeoLabel}</span>
+              </div>
+            </div>
+          </div>
+          <div class="carta-card-actions">
+            <button class="btn btn-secondary btn-sm" onclick="abrirEditorCarta('${AdminUI.escapeHtml(c.Id_Carta)}')" title="Editar contenido (próximamente)">
+              📝 Editor
+            </button>
+            ${!esActiva ? `
+              <button class="btn btn-secondary btn-sm" onclick="activarCarta('${AdminUI.escapeHtml(c.Id_Carta)}', '${AdminUI.escapeHtml(c.Nombre)}')" title="Activar">
+                ⭐ Activar
+              </button>
+            ` : ''}
+            <button class="btn btn-secondary btn-sm" onclick="abrirModalDuplicarCarta('${AdminUI.escapeHtml(c.Id_Carta)}', '${AdminUI.escapeHtml(c.Nombre)}')" title="Duplicar">
+              📋 Duplicar
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="abrirModalEditarCarta('${AdminUI.escapeHtml(c.Id_Carta)}')" title="Editar datos">
+              ⚙️ Datos
+            </button>
+            <button class="btn btn-secondary btn-sm btn-danger-soft" onclick="archivarCarta('${AdminUI.escapeHtml(c.Id_Carta)}', '${AdminUI.escapeHtml(c.Nombre)}')" title="Archivar">
+              🗑
+            </button>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  }
+
+  // --- Crear ---
+
+  function abrirModalCartaNueva() {
+    document.getElementById('carta-nueva-nombre').value = '';
+    document.getElementById('carta-nueva-descripcion').value = '';
+    const radios = document.querySelectorAll('input[name="carta-nueva-redondeo"]');
+    radios.forEach(function(r) { r.checked = r.value === '10'; });
+
+    document.getElementById('modal-carta-nueva').classList.add('is-visible');
+    setTimeout(function() { document.getElementById('carta-nueva-nombre').focus(); }, 200);
+  }
+
+  async function confirmarCartaNueva() {
+    const nombre = document.getElementById('carta-nueva-nombre').value.trim();
+    if (nombre.length < 2) {
+      AdminUI.toast('Pon un nombre de al menos 2 letras', 'error');
+      return;
+    }
+
+    const descripcion = document.getElementById('carta-nueva-descripcion').value.trim();
+    const redondeo = document.querySelector('input[name="carta-nueva-redondeo"]:checked').value;
+
+    const btn = document.getElementById('btn-carta-nueva-crear');
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+
+    const resp = await AdminAPI.cartaCrear({
+      id_empresa: state.cartasContexto.idEmpresa,
+      nombre: nombre,
+      descripcion: descripcion,
+      redondeo: redondeo
+    });
+
+    btn.disabled = false;
+    btn.textContent = 'Crear carta';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos crear la carta', 'error');
+      return;
+    }
+
+    AdminUI.toast('Carta creada', 'success');
+    cerrarModales();
+    await cargarCartas();
+  }
+
+  // --- Duplicar ---
+
+  function abrirModalDuplicarCarta(idCarta, nombreCarta) {
+    state.cartaDuplicarId = idCarta;
+    document.getElementById('duplicar-info').innerHTML = `
+      <strong>Carta a duplicar:</strong> ${AdminUI.escapeHtml(nombreCarta)}<br>
+      <small>Se copian todas las secciones y productos. La nueva carta queda independiente.</small>
+    `;
+    document.getElementById('carta-dup-nombre').value = nombreCarta + ' (copia)';
+    document.getElementById('carta-dup-modificador').value = '0';
+    document.querySelector('input[name="carta-dup-direccion"][value="aumentar"]').checked = true;
+
+    document.getElementById('modal-carta-duplicar').classList.add('is-visible');
+    setTimeout(function() {
+      const input = document.getElementById('carta-dup-nombre');
+      input.focus();
+      input.select();
+    }, 200);
+  }
+
+  async function confirmarCartaDuplicar() {
+    const nombreNueva = document.getElementById('carta-dup-nombre').value.trim();
+    if (nombreNueva.length < 2) {
+      AdminUI.toast('Pon un nombre de al menos 2 letras', 'error');
+      return;
+    }
+
+    let modificador = parseFloat(document.getElementById('carta-dup-modificador').value) || 0;
+    const direccion = document.querySelector('input[name="carta-dup-direccion"]:checked').value;
+    if (direccion === 'reducir' && modificador > 0) modificador = -modificador;
+    if (direccion === 'aumentar' && modificador < 0) modificador = -modificador;
+
+    const btn = document.getElementById('btn-carta-dup-confirmar');
+    btn.disabled = true;
+    btn.textContent = 'Duplicando…';
+
+    const resp = await AdminAPI.cartaDuplicar(state.cartaDuplicarId, nombreNueva, modificador);
+
+    btn.disabled = false;
+    btn.textContent = 'Duplicar carta';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos duplicar la carta', 'error');
+      return;
+    }
+
+    AdminUI.toast(
+      'Carta duplicada · ' + resp.secciones_copiadas + ' secciones, ' + resp.productos_copiados + ' productos',
+      'success'
+    );
+    cerrarModales();
+    await cargarCartas();
+  }
+
+  // --- Editar ---
+
+  async function abrirModalEditarCarta(idCarta) {
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.cartaObtenerCompleta(idCarta);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cargar la carta', 'error');
+      return;
+    }
+
+    state.cartaEditarId = idCarta;
+    const c = resp.carta;
+
+    document.getElementById('carta-edit-nombre').value = c.Nombre || '';
+    document.getElementById('carta-edit-descripcion').value = c.Descripcion || '';
+
+    const redondeo = c.Redondeo || '10';
+    const radios = document.querySelectorAll('input[name="carta-edit-redondeo"]');
+    radios.forEach(function(r) { r.checked = r.value === redondeo; });
+
+    document.getElementById('carta-edit-pie-direccion').value = c.Pie_Direccion || '';
+    document.getElementById('carta-edit-pie-telefono').value = c.Pie_Telefono || '';
+    document.getElementById('carta-edit-pie-mail').value = c.Pie_Mail || '';
+    document.getElementById('carta-edit-notas').value = c.Notas || '';
+
+    document.getElementById('modal-carta-editar').classList.add('is-visible');
+  }
+
+  async function confirmarCartaEditar() {
+    const cambios = {
+      nombre: document.getElementById('carta-edit-nombre').value.trim(),
+      descripcion: document.getElementById('carta-edit-descripcion').value.trim(),
+      redondeo: document.querySelector('input[name="carta-edit-redondeo"]:checked').value,
+      pie_direccion: document.getElementById('carta-edit-pie-direccion').value.trim(),
+      pie_telefono: document.getElementById('carta-edit-pie-telefono').value.trim(),
+      pie_mail: document.getElementById('carta-edit-pie-mail').value.trim(),
+      notas: document.getElementById('carta-edit-notas').value.trim()
+    };
+
+    if (cambios.nombre.length < 2) {
+      AdminUI.toast('El nombre debe tener al menos 2 letras', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-carta-edit-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    const resp = await AdminAPI.cartaActualizar(state.cartaEditarId, cambios);
+
+    btn.disabled = false;
+    btn.textContent = 'Guardar cambios';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos guardar', 'error');
+      return;
+    }
+
+    AdminUI.toast('Cambios guardados', 'success');
+    cerrarModales();
+    await cargarCartas();
+  }
+
+  // --- Activar ---
+
+  async function activarCarta(idCarta, nombreCarta) {
+    const confirmar = await AdminUI.confirm({
+      title: '¿Activar esta carta?',
+      message: '"' + nombreCarta + '" se activará. Si hay otras cartas activas en la empresa, se desactivarán automáticamente. Solo una carta puede estar activa a la vez.',
+      okLabel: 'Activar',
+      cancelLabel: 'Cancelar'
+    });
+    if (!confirmar) return;
+
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.cartaActivar(idCarta);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos activar', 'error');
+      return;
+    }
+
+    if (resp.otras_desactivadas > 0) {
+      AdminUI.toast('Carta activada (' + resp.otras_desactivadas + ' otras desactivadas)', 'success');
+    } else {
+      AdminUI.toast('Carta activada', 'success');
+    }
+    await cargarCartas();
+  }
+
+  // --- Archivar ---
+
+  async function archivarCarta(idCarta, nombreCarta) {
+    const confirmar = await AdminUI.confirm({
+      title: '¿Archivar esta carta?',
+      message: '"' + nombreCarta + '" se va a archivar (no se borra, queda oculta). Podrás recuperarla manualmente desde la Sheet si lo necesitás.',
+      okLabel: 'Archivar',
+      cancelLabel: 'Cancelar'
+    });
+    if (!confirmar) return;
+
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.cartaArchivar(idCarta);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos archivar', 'error');
+      return;
+    }
+
+    AdminUI.toast('Carta archivada', 'success');
+    await cargarCartas();
+  }
+
+  // --- Editor (placeholder, próxima sesión) ---
+
+  function abrirEditorCarta(idCarta) {
+    AdminUI.toast('Editor de secciones y productos: próxima sesión 🎯', 'info');
+  }
+
+  // --- Modales utilitarios ---
+
+  function cerrarModales() {
+    document.querySelectorAll('.modal-overlay').forEach(function(m) {
+      m.classList.remove('is-visible');
+    });
   }
 
 
@@ -577,7 +952,19 @@ const AdminApp = (function() {
     cerrarSesion,
     iniciarWizardEmpresa,
     iniciarWizardLocal,
-    abrirEmpresa
+    abrirEmpresa,
+    volverADashboard,
+    abrirCartasDelLocal,
+    abrirModalCartaNueva,
+    confirmarCartaNueva,
+    abrirModalDuplicarCarta,
+    confirmarCartaDuplicar,
+    abrirModalEditarCarta,
+    confirmarCartaEditar,
+    activarCarta,
+    archivarCarta,
+    abrirEditorCarta,
+    cerrarModales
   };
 
 })();
@@ -594,6 +981,22 @@ function cerrarSesion() { AdminApp.cerrarSesion(); }
 function iniciarWizardEmpresa() { AdminApp.iniciarWizardEmpresa(); }
 function abrirEmpresa(idEmpresa) { AdminApp.abrirEmpresa(idEmpresa); }
 function cancelarWizard() { Wizard.cancel(); }
+
+// Cartas
+function volverADashboard() { AdminApp.volverADashboard(); }
+function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
+  AdminApp.abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa);
+}
+function abrirModalCartaNueva() { AdminApp.abrirModalCartaNueva(); }
+function confirmarCartaNueva() { AdminApp.confirmarCartaNueva(); }
+function abrirModalDuplicarCarta(idCarta, nombreCarta) { AdminApp.abrirModalDuplicarCarta(idCarta, nombreCarta); }
+function confirmarCartaDuplicar() { AdminApp.confirmarCartaDuplicar(); }
+function abrirModalEditarCarta(idCarta) { AdminApp.abrirModalEditarCarta(idCarta); }
+function confirmarCartaEditar() { AdminApp.confirmarCartaEditar(); }
+function activarCarta(idCarta, nombreCarta) { AdminApp.activarCarta(idCarta, nombreCarta); }
+function archivarCarta(idCarta, nombreCarta) { AdminApp.archivarCarta(idCarta, nombreCarta); }
+function abrirEditorCarta(idCarta) { AdminApp.abrirEditorCarta(idCarta); }
+function cerrarModales() { AdminApp.cerrarModales(); }
 
 
 // ============================================================
