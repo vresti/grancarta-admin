@@ -1138,6 +1138,58 @@ const AdminApp = (function() {
     await recargarEditor();
   }
 
+  // ============================================================
+  // VISTA PREVIA DE LA CARTA
+  // ============================================================
+
+  function abrirVistaPrevia() {
+    const ctx = state.editorContexto;
+    if (!ctx) {
+      AdminUI.toast('Cargá una carta primero', 'error');
+      return;
+    }
+
+    // Datos para el renderer
+    const datosCarta = {
+      carta: ctx.carta,
+      secciones: ctx.secciones,
+      nombreEmpresa: state.cartasContexto ? state.cartasContexto.nombreEmpresa : '',
+      nombreLocal: state.cartasContexto ? state.cartasContexto.nombreLocal : '',
+      template: 'minimalista'   // Por ahora fijo, en C2 será configurable
+    };
+
+    // Generar HTML
+    const html = CartaRenderer.renderizar(datosCarta);
+
+    // Inyectar en iframe
+    const iframe = document.getElementById('preview-iframe');
+    iframe.srcdoc = html;
+
+    // Subtítulo informativo
+    const cantidad = ctx.stats.productos_disponibles;
+    document.getElementById('preview-subtitulo').textContent =
+      cantidad + ' producto(s) visible(s) · template: minimalista';
+
+    // Mostrar modal
+    document.getElementById('modal-preview').classList.add('is-visible');
+  }
+
+  function cerrarVistaPrevia() {
+    document.getElementById('modal-preview').classList.remove('is-visible');
+    // Limpiar iframe para liberar memoria
+    document.getElementById('preview-iframe').srcdoc = '';
+  }
+
+  function cambiarDispositivoPreview(dispositivo) {
+    document.querySelectorAll('.preview-device-btn').forEach(function(b) {
+      b.classList.toggle('is-active', b.dataset.device === dispositivo);
+    });
+    const frame = document.getElementById('preview-frame');
+    frame.classList.toggle('is-mobile', dispositivo === 'mobile');
+    frame.classList.toggle('is-desktop', dispositivo === 'desktop');
+  }
+
+
   // --- Modales utilitarios ---
 
   function cerrarModales() {
@@ -1472,6 +1524,9 @@ const AdminApp = (function() {
     ordenarProducto,
     toggleDisponible,
     eliminarProducto,
+    abrirVistaPrevia,
+    cerrarVistaPrevia,
+    cambiarDispositivoPreview,
     cerrarModales
   };
 
@@ -1520,6 +1575,11 @@ function confirmarProducto() { AdminApp.confirmarProducto(); }
 function ordenarProducto(id, dir) { AdminApp.ordenarProducto(id, dir); }
 function toggleDisponible(id, disponible) { AdminApp.toggleDisponible(id, disponible); }
 function eliminarProducto(id, nombre) { AdminApp.eliminarProducto(id, nombre); }
+
+// Vista previa
+function abrirVistaPrevia() { AdminApp.abrirVistaPrevia(); }
+function cerrarVistaPrevia() { AdminApp.cerrarVistaPrevia(); }
+function cambiarDispositivoPreview(d) { AdminApp.cambiarDispositivoPreview(d); }
 
 
 // ============================================================
