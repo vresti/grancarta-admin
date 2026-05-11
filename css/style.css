@@ -2083,3 +2083,157 @@ input:focus-visible {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+
+/* ============================================================ */
+/* MODAL DE VISTA PREVIA                                        */
+/* ============================================================ */
+.modal-overlay-preview {
+  padding: 0;
+  background: rgba(10, 14, 20, 0.95);
+}
+
+.modal-overlay-preview.is-visible {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.preview-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  padding-top: calc(1rem + env(safe-area-inset-top, 0));
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.preview-header-left {
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-title {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preview-subtitle {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.preview-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.preview-devices {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--bg-card);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+
+.preview-device-btn {
+  background: transparent;
+  border: none;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+
+.preview-device-btn:hover {
+  color: var(--text);
+}
+
+.preview-device-btn.is-active {
+  background: var(--primary);
+  color: white;
+}
+
+.preview-stage {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem;
+  background:
+    radial-gradient(ellipse at top, rgba(37, 99, 235, 0.04) 0%, transparent 60%),
+    var(--bg);
+}
+
+.preview-frame {
+  background: white;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s var(--ease);
+}
+
+.preview-frame iframe {
+  display: block;
+  border: none;
+  width: 100%;
+  height: 100%;
+}
+
+/* Modos de dispositivo */
+.preview-frame.is-mobile {
+  width: 390px;
+  height: 720px;
+  max-width: 100%;
+  max-height: calc(100vh - 8rem);
+}
+
+.preview-frame.is-desktop {
+  width: 1024px;
+  max-width: 100%;
+  height: calc(100vh - 8rem);
+}
+
+/* default (sin clase aún) = mobile */
+.preview-frame {
+  width: 390px;
+  height: 720px;
+  max-width: 100%;
+  max-height: calc(100vh - 8rem);
+}
+
+@media (max-width: 600px) {
+  .preview-stage {
+    padding: 1rem;
+  }
+  .preview-frame.is-mobile,
+  .preview-frame {
+    width: 100%;
+    height: calc(100vh - 6rem);
+  }
+  .preview-header {
+    padding: 0.875rem 1rem;
+  }
+  .preview-devices {
+    display: none;  /* en mobile real no tiene sentido el toggle */
+  }
+}
