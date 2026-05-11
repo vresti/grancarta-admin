@@ -104,6 +104,45 @@ const AdminAPI = (function() {
         id_local: idLocal,
         ...cambios
       });
+    },
+
+    // ---- Cartas (Editor de Carta) ----
+    cartaListar(idEmpresa, incluirArchivadas = false) {
+      return llamar('carta_listar', {
+        id_empresa: idEmpresa,
+        incluir_archivadas: incluirArchivadas
+      });
+    },
+
+    cartaCrear(datos) {
+      return llamar('carta_crear', datos);
+    },
+
+    cartaObtenerCompleta(idCarta) {
+      return llamar('carta_obtener_completa', { id_carta: idCarta });
+    },
+
+    cartaActualizar(idCarta, cambios) {
+      return llamar('carta_actualizar', {
+        id_carta: idCarta,
+        ...cambios
+      });
+    },
+
+    cartaDuplicar(idCartaOrigen, nombreNueva, modificadorPorcentaje = 0) {
+      return llamar('carta_duplicar', {
+        id_carta_origen: idCartaOrigen,
+        nombre_nueva: nombreNueva,
+        modificador_porcentaje: modificadorPorcentaje
+      });
+    },
+
+    cartaActivar(idCarta) {
+      return llamar('carta_activar', { id_carta: idCarta });
+    },
+
+    cartaArchivar(idCarta) {
+      return llamar('carta_archivar', { id_carta: idCarta });
     }
   };
 
