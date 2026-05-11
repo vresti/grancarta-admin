@@ -637,10 +637,505 @@ const AdminApp = (function() {
     await cargarCartas();
   }
 
-  // --- Editor (placeholder, próxima sesión) ---
+  // --- Editor (Sesión B: secciones y productos) ---
 
-  function abrirEditorCarta(idCarta) {
-    AdminUI.toast('Editor de secciones y productos: próxima sesión 🎯', 'info');
+  async function abrirEditorCarta(idCarta) {
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.cartaObtenerCompleta(idCarta);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cargar la carta', 'error');
+      return;
+    }
+
+    state.editorContexto = {
+      idCarta: idCarta,
+      carta: resp.carta,
+      secciones: resp.secciones || [],
+      stats: resp.stats || { cantidad_secciones: 0, cantidad_productos: 0, productos_disponibles: 0 }
+    };
+
+    document.getElementById('editor-titulo').textContent = resp.carta.Nombre;
+    document.getElementById('editor-subtitulo').textContent =
+      (state.cartasContexto ? state.cartasContexto.nombreLocal + ' · ' + state.cartasContexto.nombreEmpresa : '');
+
+    cambiarTabEditor('contenido');
+    AdminUI.mostrarPantalla('screen-editor');
+    renderEditor();
+  }
+
+  async function recargarEditor() {
+    if (!state.editorContexto) return;
+    const resp = await AdminAPI.cartaObtenerCompleta(state.editorContexto.idCarta);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos recargar', 'error');
+      return;
+    }
+    state.editorContexto.carta = resp.carta;
+    state.editorContexto.secciones = resp.secciones || [];
+    state.editorContexto.stats = resp.stats || {};
+    renderEditor();
+  }
+
+  function renderEditor() {
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+
+    // Stats
+    document.getElementById('editor-stats').innerHTML = `
+      <div class="editor-stat-card">
+        <div class="editor-stat-value">${ctx.stats.cantidad_secciones}</div>
+        <div class="editor-stat-label">secciones</div>
+      </div>
+      <div class="editor-stat-card">
+        <div class="editor-stat-value">${ctx.stats.cantidad_productos}</div>
+        <div class="editor-stat-label">productos</div>
+      </div>
+      <div class="editor-stat-card">
+        <div class="editor-stat-value">${ctx.stats.productos_disponibles}</div>
+        <div class="editor-stat-label">disponibles hoy</div>
+      </div>
+      <div class="editor-stat-card editor-stat-redondeo">
+        <div class="editor-stat-value-sm">
+          ${ctx.carta.Redondeo === 'sin' ? 'sin' : '$' + ctx.carta.Redondeo}
+        </div>
+        <div class="editor-stat-label">redondeo</div>
+      </div>
+    `;
+
+    // Secciones
+    const container = document.getElementById('secciones-list');
+
+    if (ctx.secciones.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📑</div>
+          <div class="empty-state-title">Carta vacía</div>
+          <div class="empty-state-detail">
+            Empezá creando la primera sección (ej: "Bebidas", "Entradas", "Postres").
+          </div>
+          <button class="btn btn-primary" onclick="abrirModalSeccionNueva()">+ Crear primera sección</button>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    ctx.secciones.forEach(function(sec, idx) {
+      const esPrimera = idx === 0;
+      const esUltima = idx === ctx.secciones.length - 1;
+
+      html += `
+        <div class="seccion-block">
+          <div class="seccion-header">
+            <div class="seccion-titulo">
+              <span class="seccion-nombre">${AdminUI.escapeHtml(sec.Nombre)}</span>
+              ${sec.Descripcion ? `<span class="seccion-desc">${AdminUI.escapeHtml(sec.Descripcion)}</span>` : ''}
+            </div>
+            <div class="seccion-actions">
+              <button class="btn-icon btn-icon-sm ${esPrimera ? 'is-disabled' : ''}"
+                      onclick="ordenarSeccion('${sec.Id_Seccion}', 'arriba')"
+                      title="Subir"
+                      ${esPrimera ? 'disabled' : ''}>▲</button>
+              <button class="btn-icon btn-icon-sm ${esUltima ? 'is-disabled' : ''}"
+                      onclick="ordenarSeccion('${sec.Id_Seccion}', 'abajo')"
+                      title="Bajar"
+                      ${esUltima ? 'disabled' : ''}>▼</button>
+              <button class="btn-icon btn-icon-sm"
+                      onclick="abrirModalSeccionEditar('${sec.Id_Seccion}')"
+                      title="Editar">✏️</button>
+              <button class="btn-icon btn-icon-sm btn-danger-soft"
+                      onclick="eliminarSeccion('${sec.Id_Seccion}', '${AdminUI.escapeHtml(sec.Nombre)}', ${sec.productos.length})"
+                      title="Eliminar">🗑</button>
+            </div>
+          </div>
+
+          <div class="productos-list">
+      `;
+
+      if (sec.productos.length === 0) {
+        html += `
+          <div class="seccion-empty">
+            Sin productos todavía. <button class="link-btn" onclick="abrirModalProductoNuevo('${sec.Id_Seccion}')">Agregar el primero →</button>
+          </div>
+        `;
+      } else {
+        sec.productos.forEach(function(p, pIdx) {
+          const esPrimP = pIdx === 0;
+          const esUltimP = pIdx === sec.productos.length - 1;
+          const disponible = p.Disponible_Hoy;
+
+          // Flags y alergenos
+          const flags = [];
+          if (p.Etiquetas) {
+            if (p.Etiquetas.vegetariano) flags.push('🌱');
+            if (p.Etiquetas.sin_tacc) flags.push('🌾');
+            if (p.Etiquetas.picante) flags.push('🌶');
+            if (p.Etiquetas.alergenos && p.Etiquetas.alergenos.length > 0) {
+              flags.push('⚠️ ' + p.Etiquetas.alergenos.join(','));
+            }
+          }
+          const flagsHtml = flags.length > 0 ? '<span class="producto-flags">' + flags.join(' ') + '</span>' : '';
+
+          html += `
+            <div class="producto-row ${disponible ? '' : 'is-unavailable'}">
+              <div class="producto-toggle">
+                <label class="toggle-disponible" title="${disponible ? 'Disponible hoy' : 'Agotado'}">
+                  <input type="checkbox" ${disponible ? 'checked' : ''}
+                         onchange="toggleDisponible('${p.Id_Producto}', this.checked)">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="producto-info">
+                <div class="producto-nombre">${AdminUI.escapeHtml(p.Nombre)}</div>
+                ${p.Descripcion ? `<div class="producto-desc">${AdminUI.escapeHtml(p.Descripcion)}</div>` : ''}
+                ${flagsHtml}
+              </div>
+              <div class="producto-precio">$${formatearPrecio(p.Precio)}</div>
+              <div class="producto-actions">
+                <button class="btn-icon btn-icon-sm ${esPrimP ? 'is-disabled' : ''}"
+                        onclick="ordenarProducto('${p.Id_Producto}', 'arriba')"
+                        title="Subir"
+                        ${esPrimP ? 'disabled' : ''}>▲</button>
+                <button class="btn-icon btn-icon-sm ${esUltimP ? 'is-disabled' : ''}"
+                        onclick="ordenarProducto('${p.Id_Producto}', 'abajo')"
+                        title="Bajar"
+                        ${esUltimP ? 'disabled' : ''}>▼</button>
+                <button class="btn-icon btn-icon-sm"
+                        onclick="abrirModalProductoEditar('${p.Id_Producto}')"
+                        title="Editar">✏️</button>
+                <button class="btn-icon btn-icon-sm btn-danger-soft"
+                        onclick="eliminarProducto('${p.Id_Producto}', '${AdminUI.escapeHtml(p.Nombre)}')"
+                        title="Eliminar">🗑</button>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      html += `
+            <div class="seccion-add-producto">
+              <button class="btn btn-secondary btn-sm" onclick="abrirModalProductoNuevo('${sec.Id_Seccion}')">
+                + Agregar producto a "${AdminUI.escapeHtml(sec.Nombre)}"
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  }
+
+  function formatearPrecio(valor) {
+    const num = parseFloat(valor) || 0;
+    // Formato argentino: separador de miles con punto, decimales con coma
+    const opciones = { minimumFractionDigits: 0, maximumFractionDigits: 2 };
+    return num.toLocaleString('es-AR', opciones);
+  }
+
+  function cambiarTabEditor(tab) {
+    document.querySelectorAll('.editor-tab').forEach(function(t) {
+      t.classList.toggle('is-active', t.dataset.tab === tab);
+    });
+    document.querySelectorAll('.editor-tab-content').forEach(function(c) {
+      c.classList.remove('is-active');
+    });
+    document.getElementById('editor-tab-' + tab).classList.add('is-active');
+  }
+
+  function volverACartas() {
+    state.editorContexto = null;
+    AdminUI.mostrarPantalla('screen-cartas');
+  }
+
+
+  // ============================================================
+  // SECCIONES (modales y CRUD)
+  // ============================================================
+
+  function abrirModalSeccionNueva() {
+    state.seccionEditarId = null;
+    document.getElementById('modal-seccion-titulo').textContent = 'Nueva sección';
+    document.getElementById('seccion-nombre').value = '';
+    document.getElementById('seccion-descripcion').value = '';
+    document.getElementById('btn-seccion-guardar').textContent = 'Crear sección';
+
+    document.getElementById('modal-seccion').classList.add('is-visible');
+    setTimeout(function() { document.getElementById('seccion-nombre').focus(); }, 200);
+  }
+
+  function abrirModalSeccionEditar(idSeccion) {
+    const sec = state.editorContexto.secciones.find(function(s) { return s.Id_Seccion === idSeccion; });
+    if (!sec) return;
+
+    state.seccionEditarId = idSeccion;
+    document.getElementById('modal-seccion-titulo').textContent = 'Editar sección';
+    document.getElementById('seccion-nombre').value = sec.Nombre || '';
+    document.getElementById('seccion-descripcion').value = sec.Descripcion || '';
+    document.getElementById('btn-seccion-guardar').textContent = 'Guardar cambios';
+
+    document.getElementById('modal-seccion').classList.add('is-visible');
+    setTimeout(function() {
+      const input = document.getElementById('seccion-nombre');
+      input.focus();
+      input.select();
+    }, 200);
+  }
+
+  async function confirmarSeccion() {
+    const nombre = document.getElementById('seccion-nombre').value.trim();
+    const descripcion = document.getElementById('seccion-descripcion').value.trim();
+
+    if (nombre.length < 1) {
+      AdminUI.toast('Pon un nombre a la sección', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-seccion-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    let resp;
+    if (state.seccionEditarId) {
+      resp = await AdminAPI.seccionActualizar(state.seccionEditarId, { nombre, descripcion });
+    } else {
+      resp = await AdminAPI.seccionCrear({
+        id_carta: state.editorContexto.idCarta,
+        nombre: nombre,
+        descripcion: descripcion
+      });
+    }
+
+    btn.disabled = false;
+    btn.textContent = state.seccionEditarId ? 'Guardar cambios' : 'Crear sección';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos guardar', 'error');
+      return;
+    }
+
+    AdminUI.toast(state.seccionEditarId ? 'Sección actualizada' : 'Sección creada', 'success');
+    cerrarModales();
+    await recargarEditor();
+  }
+
+  async function ordenarSeccion(idSeccion, direccion) {
+    const resp = await AdminAPI.seccionOrdenar(idSeccion, direccion);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos reordenar', 'error');
+      return;
+    }
+    await recargarEditor();
+  }
+
+  async function eliminarSeccion(idSeccion, nombreSeccion, cantidadProductos) {
+    let mensaje = '"' + nombreSeccion + '" se va a eliminar.';
+    if (cantidadProductos > 0) {
+      mensaje += ' Tiene ' + cantidadProductos + ' producto(s) que también serán eliminados.';
+    }
+
+    const confirmar = await AdminUI.confirm({
+      title: '¿Eliminar sección?',
+      message: mensaje,
+      okLabel: 'Eliminar',
+      cancelLabel: 'Cancelar'
+    });
+    if (!confirmar) return;
+
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.seccionEliminar(idSeccion, cantidadProductos > 0);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos eliminar', 'error');
+      return;
+    }
+
+    AdminUI.toast('Sección eliminada', 'success');
+    await recargarEditor();
+  }
+
+
+  // ============================================================
+  // PRODUCTOS (modales y CRUD)
+  // ============================================================
+
+  function abrirModalProductoNuevo(idSeccion) {
+    state.productoEditarId = null;
+    state.productoSeccionId = idSeccion;
+    document.getElementById('modal-producto-titulo').textContent = 'Nuevo producto';
+    document.getElementById('producto-nombre').value = '';
+    document.getElementById('producto-descripcion').value = '';
+    document.getElementById('producto-precio').value = '';
+    document.getElementById('producto-vegetariano').checked = false;
+    document.getElementById('producto-sin-tacc').checked = false;
+    document.getElementById('producto-picante').checked = false;
+    document.querySelectorAll('[data-alergeno]').forEach(function(cb) { cb.checked = false; });
+    document.getElementById('btn-producto-guardar').textContent = 'Crear producto';
+
+    actualizarHintRedondeo();
+
+    document.getElementById('modal-producto').classList.add('is-visible');
+    setTimeout(function() { document.getElementById('producto-nombre').focus(); }, 200);
+  }
+
+  function abrirModalProductoEditar(idProducto) {
+    let producto = null;
+    state.editorContexto.secciones.forEach(function(s) {
+      const p = s.productos.find(function(x) { return x.Id_Producto === idProducto; });
+      if (p) producto = p;
+    });
+    if (!producto) return;
+
+    state.productoEditarId = idProducto;
+    state.productoSeccionId = null;
+
+    document.getElementById('modal-producto-titulo').textContent = 'Editar producto';
+    document.getElementById('producto-nombre').value = producto.Nombre || '';
+    document.getElementById('producto-descripcion').value = producto.Descripcion || '';
+    document.getElementById('producto-precio').value = producto.Precio || 0;
+
+    const et = producto.Etiquetas || {};
+    document.getElementById('producto-vegetariano').checked = !!et.vegetariano;
+    document.getElementById('producto-sin-tacc').checked = !!et.sin_tacc;
+    document.getElementById('producto-picante').checked = !!et.picante;
+
+    const alergenos = et.alergenos || [];
+    document.querySelectorAll('[data-alergeno]').forEach(function(cb) {
+      cb.checked = alergenos.indexOf(cb.dataset.alergeno) !== -1;
+    });
+
+    document.getElementById('btn-producto-guardar').textContent = 'Guardar cambios';
+    actualizarHintRedondeo();
+
+    document.getElementById('modal-producto').classList.add('is-visible');
+    setTimeout(function() {
+      const input = document.getElementById('producto-nombre');
+      input.focus();
+      input.select();
+    }, 200);
+  }
+
+  function actualizarHintRedondeo() {
+    const carta = state.editorContexto && state.editorContexto.carta;
+    if (!carta) return;
+    const r = carta.Redondeo || '10';
+    const txt = r === 'sin'
+      ? 'Esta carta NO redondea precios.'
+      : 'Esta carta redondea a múltiplos de $' + r + ' (se aplica en cambios masivos).';
+    document.getElementById('producto-precio-hint').textContent = txt;
+  }
+
+  async function confirmarProducto() {
+    const nombre = document.getElementById('producto-nombre').value.trim();
+    const descripcion = document.getElementById('producto-descripcion').value.trim();
+    const precio = parseFloat(document.getElementById('producto-precio').value);
+
+    if (nombre.length < 1) {
+      AdminUI.toast('Pon un nombre al producto', 'error');
+      return;
+    }
+    if (isNaN(precio) || precio < 0) {
+      AdminUI.toast('Pon un precio válido', 'error');
+      return;
+    }
+
+    const alergenos = [];
+    document.querySelectorAll('[data-alergeno]').forEach(function(cb) {
+      if (cb.checked) alergenos.push(cb.dataset.alergeno);
+    });
+
+    const payload = {
+      nombre: nombre,
+      descripcion: descripcion,
+      precio: precio,
+      alergenos: alergenos,
+      vegetariano: document.getElementById('producto-vegetariano').checked,
+      sin_tacc: document.getElementById('producto-sin-tacc').checked,
+      picante: document.getElementById('producto-picante').checked
+    };
+
+    const btn = document.getElementById('btn-producto-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    let resp;
+    if (state.productoEditarId) {
+      resp = await AdminAPI.productoActualizar(state.productoEditarId, payload);
+    } else {
+      payload.id_seccion = state.productoSeccionId;
+      resp = await AdminAPI.productoCrear(payload);
+    }
+
+    btn.disabled = false;
+    btn.textContent = state.productoEditarId ? 'Guardar cambios' : 'Crear producto';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos guardar', 'error');
+      return;
+    }
+
+    AdminUI.toast(state.productoEditarId ? 'Producto actualizado' : 'Producto creado', 'success');
+    cerrarModales();
+    await recargarEditor();
+  }
+
+  async function ordenarProducto(idProducto, direccion) {
+    const resp = await AdminAPI.productoOrdenar(idProducto, direccion);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos reordenar', 'error');
+      return;
+    }
+    await recargarEditor();
+  }
+
+  async function toggleDisponible(idProducto, disponible) {
+    const resp = await AdminAPI.productoToggleDisponible(idProducto, disponible);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cambiar la disponibilidad', 'error');
+      // Revertir el checkbox visualmente
+      await recargarEditor();
+      return;
+    }
+    // Update silencioso del estado local sin recarga completa
+    state.editorContexto.secciones.forEach(function(s) {
+      s.productos.forEach(function(p) {
+        if (p.Id_Producto === idProducto) {
+          p.Disponible_Hoy = resp.disponible_hoy;
+        }
+      });
+    });
+    // Actualizar stats sin recargar todo
+    let disponibles = 0;
+    state.editorContexto.secciones.forEach(function(s) {
+      s.productos.forEach(function(p) { if (p.Disponible_Hoy) disponibles++; });
+    });
+    state.editorContexto.stats.productos_disponibles = disponibles;
+    renderEditor();
+  }
+
+  async function eliminarProducto(idProducto, nombreProducto) {
+    const confirmar = await AdminUI.confirm({
+      title: '¿Eliminar producto?',
+      message: '"' + nombreProducto + '" se va a eliminar de esta carta.',
+      okLabel: 'Eliminar',
+      cancelLabel: 'Cancelar'
+    });
+    if (!confirmar) return;
+
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.productoEliminar(idProducto);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos eliminar', 'error');
+      return;
+    }
+
+    AdminUI.toast('Producto eliminado', 'success');
+    await recargarEditor();
   }
 
   // --- Modales utilitarios ---
@@ -964,6 +1459,19 @@ const AdminApp = (function() {
     activarCarta,
     archivarCarta,
     abrirEditorCarta,
+    volverACartas,
+    cambiarTabEditor,
+    abrirModalSeccionNueva,
+    abrirModalSeccionEditar,
+    confirmarSeccion,
+    ordenarSeccion,
+    eliminarSeccion,
+    abrirModalProductoNuevo,
+    abrirModalProductoEditar,
+    confirmarProducto,
+    ordenarProducto,
+    toggleDisponible,
+    eliminarProducto,
     cerrarModales
   };
 
@@ -997,6 +1505,21 @@ function activarCarta(idCarta, nombreCarta) { AdminApp.activarCarta(idCarta, nom
 function archivarCarta(idCarta, nombreCarta) { AdminApp.archivarCarta(idCarta, nombreCarta); }
 function abrirEditorCarta(idCarta) { AdminApp.abrirEditorCarta(idCarta); }
 function cerrarModales() { AdminApp.cerrarModales(); }
+
+// Editor de carta (secciones y productos)
+function volverACartas() { AdminApp.volverACartas(); }
+function cambiarTabEditor(tab) { AdminApp.cambiarTabEditor(tab); }
+function abrirModalSeccionNueva() { AdminApp.abrirModalSeccionNueva(); }
+function abrirModalSeccionEditar(id) { AdminApp.abrirModalSeccionEditar(id); }
+function confirmarSeccion() { AdminApp.confirmarSeccion(); }
+function ordenarSeccion(id, dir) { AdminApp.ordenarSeccion(id, dir); }
+function eliminarSeccion(id, nombre, cant) { AdminApp.eliminarSeccion(id, nombre, cant); }
+function abrirModalProductoNuevo(idSeccion) { AdminApp.abrirModalProductoNuevo(idSeccion); }
+function abrirModalProductoEditar(id) { AdminApp.abrirModalProductoEditar(id); }
+function confirmarProducto() { AdminApp.confirmarProducto(); }
+function ordenarProducto(id, dir) { AdminApp.ordenarProducto(id, dir); }
+function toggleDisponible(id, disponible) { AdminApp.toggleDisponible(id, disponible); }
+function eliminarProducto(id, nombre) { AdminApp.eliminarProducto(id, nombre); }
 
 
 // ============================================================
