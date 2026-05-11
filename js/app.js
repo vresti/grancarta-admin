@@ -440,7 +440,8 @@ const AdminApp = (function() {
     }
 
     const descripcion = document.getElementById('carta-nueva-descripcion').value.trim();
-    const redondeo = document.querySelector('input[name="carta-nueva-redondeo"]:checked').value;
+    const redondeoEl = document.querySelector('input[name="carta-nueva-redondeo"]:checked');
+    const redondeo = redondeoEl ? redondeoEl.value : '10';
 
     const btn = document.getElementById('btn-carta-nueva-crear');
     btn.disabled = true;
@@ -494,7 +495,8 @@ const AdminApp = (function() {
     }
 
     let modificador = parseFloat(document.getElementById('carta-dup-modificador').value) || 0;
-    const direccion = document.querySelector('input[name="carta-dup-direccion"]:checked').value;
+    const direccionEl = document.querySelector('input[name="carta-dup-direccion"]:checked');
+    const direccion = direccionEl ? direccionEl.value : 'aumentar';
     if (direccion === 'reducir' && modificador > 0) modificador = -modificador;
     if (direccion === 'aumentar' && modificador < 0) modificador = -modificador;
 
@@ -538,9 +540,19 @@ const AdminApp = (function() {
     document.getElementById('carta-edit-nombre').value = c.Nombre || '';
     document.getElementById('carta-edit-descripcion').value = c.Descripcion || '';
 
-    const redondeo = c.Redondeo || '10';
+    const redondeo = String(c.Redondeo || '10');
     const radios = document.querySelectorAll('input[name="carta-edit-redondeo"]');
-    radios.forEach(function(r) { r.checked = r.value === redondeo; });
+    let alguno = false;
+    radios.forEach(function(r) {
+      const matches = String(r.value) === redondeo;
+      r.checked = matches;
+      if (matches) alguno = true;
+    });
+    // Fallback de seguridad: si por alguna razón ninguno coincidió, marcar el default ($10)
+    if (!alguno) {
+      const def = document.querySelector('input[name="carta-edit-redondeo"][value="10"]');
+      if (def) def.checked = true;
+    }
 
     document.getElementById('carta-edit-pie-direccion').value = c.Pie_Direccion || '';
     document.getElementById('carta-edit-pie-telefono').value = c.Pie_Telefono || '';
@@ -591,10 +603,14 @@ const AdminApp = (function() {
   }
 
   async function confirmarCartaEditar() {
+    // Lectura segura del redondeo (fallback a '10' si por algún motivo ninguno está checked)
+    const redondeoEl = document.querySelector('input[name="carta-edit-redondeo"]:checked');
+    const redondeo = redondeoEl ? redondeoEl.value : '10';
+
     const cambios = {
       nombre: document.getElementById('carta-edit-nombre').value.trim(),
       descripcion: document.getElementById('carta-edit-descripcion').value.trim(),
-      redondeo: document.querySelector('input[name="carta-edit-redondeo"]:checked').value,
+      redondeo: redondeo,
       pie_direccion: document.getElementById('carta-edit-pie-direccion').value.trim(),
       pie_telefono: document.getElementById('carta-edit-pie-telefono').value.trim(),
       pie_mail: document.getElementById('carta-edit-pie-mail').value.trim(),
