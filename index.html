@@ -451,6 +451,9 @@
         </div>
       </div>
       <div class="dash-header-right">
+        <button class="btn btn-secondary btn-sm" onclick="abrirVistaPrevia()" title="Ver cómo lo ve el cliente">
+          👁 Vista previa
+        </button>
         <button class="btn-icon" onclick="cerrarSesion()" title="Cerrar sesión">
           🚪
         </button>
@@ -672,6 +675,37 @@
   </div>
 
   <!-- ====================================================== -->
+  <!-- MODAL: VISTA PREVIA DE LA CARTA                        -->
+  <!-- ====================================================== -->
+  <div id="modal-preview" class="modal-overlay modal-overlay-preview">
+    <div class="preview-shell">
+      <header class="preview-header">
+        <div class="preview-header-left">
+          <span class="preview-title">👁 Vista previa</span>
+          <span class="preview-subtitle" id="preview-subtitulo">Carta tal como la ve el cliente</span>
+        </div>
+        <div class="preview-header-right">
+          <div class="preview-devices">
+            <button class="preview-device-btn is-active" data-device="mobile" onclick="cambiarDispositivoPreview('mobile')" title="Vista mobile">
+              📱
+            </button>
+            <button class="preview-device-btn" data-device="desktop" onclick="cambiarDispositivoPreview('desktop')" title="Vista desktop">
+              💻
+            </button>
+          </div>
+          <button class="modal-close" onclick="cerrarVistaPrevia()" title="Cerrar">×</button>
+        </div>
+      </header>
+
+      <div class="preview-stage" id="preview-stage">
+        <div class="preview-frame" id="preview-frame">
+          <iframe id="preview-iframe" srcdoc="" sandbox="allow-same-origin" title="Vista previa"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================== -->
   <!-- COMPONENTES GLOBALES                                   -->
   <!-- ====================================================== -->
 
@@ -701,6 +735,7 @@
   <script src="js/api.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/wizard.js"></script>
+  <script src="js/preview.js"></script>
   <script src="js/app.js"></script>
 
 </body>
