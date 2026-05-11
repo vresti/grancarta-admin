@@ -547,7 +547,47 @@ const AdminApp = (function() {
     document.getElementById('carta-edit-pie-mail').value = c.Pie_Mail || '';
     document.getElementById('carta-edit-notas').value = c.Notas || '';
 
+    // Selector de templates
+    state.cartaEditarTemplate = c.Template || 'minimalista';
+    renderTemplatesGrid();
+
     document.getElementById('modal-carta-editar').classList.add('is-visible');
+  }
+
+  function renderTemplatesGrid() {
+    const grid = document.getElementById('templates-grid');
+    const templates = CartaRenderer.listarTemplates();
+    const activo = state.cartaEditarTemplate;
+
+    let html = '';
+    templates.forEach(function(t) {
+      const seleccionado = t.id === activo;
+      html += `
+        <button type="button"
+                class="template-card ${seleccionado ? 'is-selected' : ''} template-${t.id}"
+                onclick="seleccionarTemplate('${t.id}')">
+          <div class="template-preview template-preview-${t.id}">
+            <div class="template-preview-title">Aa</div>
+            <div class="template-preview-line"></div>
+            <div class="template-preview-line short"></div>
+          </div>
+          <div class="template-info">
+            <div class="template-nombre">
+              ${AdminUI.escapeHtml(t.nombre)}
+              ${t.premium ? '<span class="template-badge-premium">PREMIUM</span>' : ''}
+            </div>
+            <div class="template-desc">${AdminUI.escapeHtml(t.descripcion)}</div>
+          </div>
+        </button>
+      `;
+    });
+
+    grid.innerHTML = html;
+  }
+
+  function seleccionarTemplate(idTemplate) {
+    state.cartaEditarTemplate = idTemplate;
+    renderTemplatesGrid();
   }
 
   async function confirmarCartaEditar() {
@@ -558,7 +598,8 @@ const AdminApp = (function() {
       pie_direccion: document.getElementById('carta-edit-pie-direccion').value.trim(),
       pie_telefono: document.getElementById('carta-edit-pie-telefono').value.trim(),
       pie_mail: document.getElementById('carta-edit-pie-mail').value.trim(),
-      notas: document.getElementById('carta-edit-notas').value.trim()
+      notas: document.getElementById('carta-edit-notas').value.trim(),
+      template: state.cartaEditarTemplate || 'minimalista'
     };
 
     if (cambios.nombre.length < 2) {
@@ -1155,7 +1196,7 @@ const AdminApp = (function() {
       secciones: ctx.secciones,
       nombreEmpresa: state.cartasContexto ? state.cartasContexto.nombreEmpresa : '',
       nombreLocal: state.cartasContexto ? state.cartasContexto.nombreLocal : '',
-      template: 'minimalista'   // Por ahora fijo, en C2 será configurable
+      template: ctx.carta.Template || 'minimalista'
     };
 
     // Generar HTML
@@ -1167,8 +1208,9 @@ const AdminApp = (function() {
 
     // Subtítulo informativo
     const cantidad = ctx.stats.productos_disponibles;
+    const tplName = datosCarta.template;
     document.getElementById('preview-subtitulo').textContent =
-      cantidad + ' producto(s) visible(s) · template: minimalista';
+      cantidad + ' producto(s) visible(s) · template: ' + tplName;
 
     // Mostrar modal
     document.getElementById('modal-preview').classList.add('is-visible');
@@ -1527,6 +1569,7 @@ const AdminApp = (function() {
     abrirVistaPrevia,
     cerrarVistaPrevia,
     cambiarDispositivoPreview,
+    seleccionarTemplate,
     cerrarModales
   };
 
@@ -1580,6 +1623,7 @@ function eliminarProducto(id, nombre) { AdminApp.eliminarProducto(id, nombre); }
 function abrirVistaPrevia() { AdminApp.abrirVistaPrevia(); }
 function cerrarVistaPrevia() { AdminApp.cerrarVistaPrevia(); }
 function cambiarDispositivoPreview(d) { AdminApp.cambiarDispositivoPreview(d); }
+function seleccionarTemplate(t) { AdminApp.seleccionarTemplate(t); }
 
 
 // ============================================================
