@@ -26,12 +26,37 @@ const AdminApp = (function() {
   // ============================================================
 
   async function init() {
+    // ⚠️ NUEVO: si vinimos desde app.grancarta.com con un JWT contextual
+    // en el query string, lo guardamos en localStorage y limpiamos la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenDeURL = urlParams.get('t');
+    if (tokenDeURL) {
+      localStorage.setItem('admin_jwt', tokenDeURL);
+      // Guardamos también el mail si vino (es opcional, podemos obtenerlo
+      // del backend al pedir la sesión)
+      const mailDeURL = urlParams.get('m');
+      if (mailDeURL) localStorage.setItem('admin_mail', mailDeURL);
+      // Limpiar el query string para que el token no quede expuesto
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     const jwt = localStorage.getItem('admin_jwt');
     const mail = localStorage.getItem('admin_mail');
 
-    if (jwt && mail) {
+    if (jwt) {
       state.jwt = jwt;
-      state.mail = mail;
+      state.mail = mail || '';
+
+      // Si tenemos JWT pero no mail, lo pedimos al backend
+      if (!mail) {
+        const resp = await AdminAPI.obtenerMiSesion();
+        if (resp.ok && resp.usuario) {
+          state.mail = resp.usuario.mail || resp.usuario.Mail || '';
+          state.usuarioLogueado = resp.usuario;
+          localStorage.setItem('admin_mail', state.mail);
+        }
+      }
+
       await cargarDashboard();
     } else {
       AdminUI.mostrarPantalla('screen-login-mail');
@@ -115,7 +140,7 @@ const AdminApp = (function() {
   async function cerrarSesion() {
     const confirmar = await AdminUI.confirm({
       title: '¿Cerrar sesión?',
-      message: 'Vas a tener que volver a ingresar el código.',
+      message: 'Volverás al selector para elegir otra empresa o salir definitivamente.',
       okLabel: 'Cerrar sesión',
       cancelLabel: 'Cancelar'
     });
@@ -126,13 +151,17 @@ const AdminApp = (function() {
       await AdminAPI.cerrarSesion();
     } catch (e) {}
 
+    // Limpiar el contexto del admin pero NO el del app
+    // (el usuario sigue logueado a nivel cuenta, vuelve al selector)
     localStorage.removeItem('admin_jwt');
     localStorage.removeItem('admin_mail');
     state.jwt = null;
     state.mail = null;
     state.estructura = null;
     AdminUI.setLoading(false);
-    location.reload();
+
+    // Redirigir al selector de ámbitos
+    window.location.href = 'https://app.grancarta.com';
   }
 
 
@@ -165,7 +194,7 @@ const AdminApp = (function() {
   function cerrarSesionForzado() {
     localStorage.removeItem('admin_jwt');
     localStorage.removeItem('admin_mail');
-    location.reload();
+    window.location.href = 'https://app.grancarta.com';
   }
 
   function renderDashboard() {
