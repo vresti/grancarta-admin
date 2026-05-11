@@ -143,6 +143,66 @@ const AdminAPI = (function() {
 
     cartaArchivar(idCarta) {
       return llamar('carta_archivar', { id_carta: idCarta });
+    },
+
+    // ---- Secciones ----
+    seccionCrear(datos) {
+      return llamar('seccion_crear', datos);
+    },
+
+    seccionListar(idCarta) {
+      return llamar('seccion_listar', { id_carta: idCarta });
+    },
+
+    seccionActualizar(idSeccion, cambios) {
+      return llamar('seccion_actualizar', {
+        id_seccion: idSeccion,
+        ...cambios
+      });
+    },
+
+    seccionOrdenar(idSeccion, direccion) {
+      return llamar('seccion_ordenar', {
+        id_seccion: idSeccion,
+        direccion: direccion
+      });
+    },
+
+    seccionEliminar(idSeccion, forzar = false) {
+      return llamar('seccion_eliminar', {
+        id_seccion: idSeccion,
+        forzar: forzar
+      });
+    },
+
+    // ---- Productos ----
+    productoCrear(datos) {
+      return llamar('producto_crear', datos);
+    },
+
+    productoActualizar(idProducto, cambios) {
+      return llamar('producto_actualizar', {
+        id_producto: idProducto,
+        ...cambios
+      });
+    },
+
+    productoOrdenar(idProducto, direccion) {
+      return llamar('producto_ordenar', {
+        id_producto: idProducto,
+        direccion: direccion
+      });
+    },
+
+    productoToggleDisponible(idProducto, disponible) {
+      return llamar('producto_toggle_disponible', {
+        id_producto: idProducto,
+        disponible: disponible
+      });
+    },
+
+    productoEliminar(idProducto) {
+      return llamar('producto_eliminar', { id_producto: idProducto });
     }
   };
 
