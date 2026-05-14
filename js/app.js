@@ -69,7 +69,7 @@ const AdminApp = (function() {
   // ============================================================
 
   async function solicitarCodigo(event) {
-    event.preventDefault();
+    if (event && event.preventDefault) event.preventDefault();
     const mail = document.getElementById('input-mail').value.trim().toLowerCase();
     if (!mail) return;
 
@@ -84,6 +84,20 @@ const AdminApp = (function() {
     btn.textContent = 'Pedir código';
 
     if (!resp.ok) {
+      // Patrón LegalPagaré: si el mail no existe, abrir pantalla de registro
+      if (resp.needsRegister) {
+        state.mail = mail;
+        document.getElementById('registro-mail-display').textContent = mail;
+        document.getElementById('input-nombre').value = '';
+        document.getElementById('input-apellido').value = '';
+        AdminUI.setLoginStatus('login-status-registro', '');
+        AdminUI.mostrarPantalla('screen-registro');
+        setTimeout(function() {
+          const i = document.getElementById('input-nombre');
+          if (i) i.focus();
+        }, 100);
+        return;
+      }
       AdminUI.setLoginStatus('login-status-1', resp.error || 'No pudimos enviar el código', 'error');
       return;
     }
@@ -99,6 +113,64 @@ const AdminApp = (function() {
         input.value = '';
       }
     }, 100);
+  }
+
+
+  // ============================================================
+  // AUTO-REGISTRO (patrón LegalPagaré)
+  // ============================================================
+
+  async function confirmarRegistro(event) {
+    if (event && event.preventDefault) event.preventDefault();
+
+    const nombre = document.getElementById('input-nombre').value.trim();
+    const apellido = document.getElementById('input-apellido').value.trim();
+
+    if (nombre.length < 2) {
+      AdminUI.setLoginStatus('login-status-registro', 'Ingresá tu nombre (mínimo 2 letras)', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-confirmar-registro');
+    btn.disabled = true;
+    btn.textContent = 'Creando cuenta…';
+    AdminUI.setLoginStatus('login-status-registro', '');
+
+    const resp = await AdminAPI.registrarCuenta(state.mail, nombre, apellido);
+
+    if (!resp.ok) {
+      btn.disabled = false;
+      btn.textContent = 'Crear cuenta y continuar →';
+      AdminUI.setLoginStatus('login-status-registro', resp.error || 'No pudimos crear tu cuenta', 'error');
+      return;
+    }
+
+    // Guardamos el nombre para la pantalla de bienvenida
+    state.nombreNuevo = nombre;
+
+    // Ahora pedimos el código automáticamente (la cuenta ya existe)
+    btn.textContent = 'Enviando código…';
+    const r2 = await AdminAPI.solicitarCodigo(state.mail);
+
+    btn.disabled = false;
+    btn.textContent = 'Crear cuenta y continuar →';
+
+    if (!r2.ok) {
+      AdminUI.setLoginStatus('login-status-registro',
+        'Cuenta creada pero no pudimos enviar el código. Volvé a intentar.', 'error');
+      return;
+    }
+
+    AdminUI.setLoginStatus('login-status-registro',
+      '✓ Cuenta creada. Te enviamos un código por mail.', 'success');
+
+    document.getElementById('mail-display').textContent = state.mail;
+
+    setTimeout(function() {
+      AdminUI.mostrarPantalla('screen-login-code');
+      const input = document.getElementById('input-code');
+      if (input) { input.focus(); input.value = ''; }
+    }, 800);
   }
 
   async function verificarCodigo(event) {
@@ -210,6 +282,17 @@ const AdminApp = (function() {
     }
 
     AdminUI.setLoading(false);
+
+    // Si el usuario no tiene empresas todavía → pantalla de bienvenida con 4 pasos
+    if (empresas.length === 0) {
+      const nombreUsuario = state.nombreNuevo
+        || (state.usuarioLogueado && state.usuarioLogueado.nombre)
+        || 'amigo';
+      document.getElementById('bienvenida-nombre').textContent = nombreUsuario;
+      AdminUI.mostrarPantalla('screen-bienvenida');
+      return;
+    }
+
     renderDashboard();
   }
 
@@ -1803,6 +1886,7 @@ const AdminApp = (function() {
     init,
     solicitarCodigo,
     verificarCodigo,
+    confirmarRegistro,
     volverALoginMail,
     cerrarSesion,
     iniciarWizardEmpresa,
@@ -1851,6 +1935,7 @@ const AdminApp = (function() {
 
 function solicitarCodigo(e) { AdminApp.solicitarCodigo(e); }
 function verificarCodigo(e) { AdminApp.verificarCodigo(e); }
+function confirmarRegistro(e) { AdminApp.confirmarRegistro(e); }
 function volverALoginMail() { AdminApp.volverALoginMail(); }
 function cerrarSesion() { AdminApp.cerrarSesion(); }
 function iniciarWizardEmpresa() { AdminApp.iniciarWizardEmpresa(); }
