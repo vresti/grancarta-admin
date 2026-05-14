@@ -206,6 +206,48 @@
   </section>
 
   <!-- ====================================================== -->
+  <!-- MODAL: CAMBIAR CARTA DEL LOCAL                          -->
+  <!-- ====================================================== -->
+  <div id="modal-cambiar-carta" class="modal-overlay">
+    <div class="modal-box modal-cambiar-carta">
+      <header class="modal-header">
+        <h3 class="modal-title">Cambiar carta del local</h3>
+        <button class="modal-close" onclick="cerrarModales()" title="Cerrar">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="cambiar-carta-icono">🔄</div>
+        <div class="cambiar-carta-local" id="cambiar-carta-local-nombre">—</div>
+
+        <div class="cambiar-carta-flow">
+          <div class="cambiar-carta-flow-item">
+            <div class="cambiar-carta-flow-label">Carta actual</div>
+            <div class="cambiar-carta-flow-value" id="cambiar-carta-actual">—</div>
+          </div>
+          <div class="cambiar-carta-flow-arrow">→</div>
+          <div class="cambiar-carta-flow-item is-new">
+            <div class="cambiar-carta-flow-label">Nueva carta</div>
+            <div class="cambiar-carta-flow-value" id="cambiar-carta-nueva">—</div>
+          </div>
+        </div>
+
+        <div class="cambiar-carta-promesa">
+          <span class="cambiar-carta-promesa-icon">✨</span>
+          <span class="cambiar-carta-promesa-text">
+            <strong>Su comercio siempre tiene una carta en línea.</strong><br>
+            El cambio es instantáneo, sin pasar por un estado vacío.
+          </span>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmarCambioCarta()" id="btn-confirmar-cambio">
+          Sí, cambiar ahora →
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ====================================================== -->
   <!-- MODAL: NUEVA CARTA                                     -->
   <!-- ====================================================== -->
   <div id="modal-carta-nueva" class="modal-overlay">
