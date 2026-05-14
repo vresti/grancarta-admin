@@ -91,6 +91,100 @@
   </section>
 
   <!-- ====================================================== -->
+  <!-- PANTALLA: REGISTRO DE CUENTA NUEVA                     -->
+  <!-- ====================================================== -->
+  <section id="screen-registro" class="screen screen-login">
+    <div class="login-container">
+      <div class="login-brand">
+        <div class="brand-icon-mail">👤</div>
+        <div class="brand-name">¡Bienvenido a GranCarta!</div>
+        <div class="brand-tagline" id="registro-mail-display">…</div>
+      </div>
+
+      <div class="registro-mensaje">
+        Tu correo no está registrado todavía. Ingresá tu nombre y creamos tu cuenta con
+        <strong class="texto-trial">30 días de prueba gratis</strong>.
+      </div>
+
+      <form id="form-registro" class="login-form" onsubmit="confirmarRegistro(event)">
+        <label class="login-label" for="input-nombre">Nombre</label>
+        <input type="text"
+               id="input-nombre"
+               class="login-input"
+               placeholder="Juan"
+               autocomplete="given-name"
+               required
+               autofocus>
+
+        <label class="login-label" for="input-apellido">Apellido</label>
+        <input type="text"
+               id="input-apellido"
+               class="login-input"
+               placeholder="García"
+               autocomplete="family-name">
+
+        <button type="submit" class="login-btn" id="btn-confirmar-registro">
+          Crear cuenta y continuar →
+        </button>
+        <div class="login-status" id="login-status-registro"></div>
+      </form>
+
+      <button class="login-back" onclick="volverALoginMail()">← Usar otro mail</button>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
+  <!-- PANTALLA: BIENVENIDA (cuenta sin empresas todavía)     -->
+  <!-- ====================================================== -->
+  <section id="screen-bienvenida" class="screen">
+    <div class="bienvenida-container">
+      <div class="bienvenida-header">
+        <div class="bienvenida-icon">🍷</div>
+        <h1 class="bienvenida-titulo">¡Bienvenido a GranCarta, <span id="bienvenida-nombre">amigo</span>!</h1>
+        <p class="bienvenida-subtitulo">Tu prueba de 30 días empezó. Empecemos a armar tu carta digital paso a paso.</p>
+      </div>
+
+      <div class="bienvenida-pasos">
+        <div class="paso-card paso-activo">
+          <div class="paso-numero">1</div>
+          <div class="paso-info">
+            <div class="paso-titulo">Crear tu empresa</div>
+            <div class="paso-detalle">Razón social, CUIT y datos comerciales</div>
+          </div>
+        </div>
+        <div class="paso-card">
+          <div class="paso-numero">2</div>
+          <div class="paso-info">
+            <div class="paso-titulo">Crear tu primer local</div>
+            <div class="paso-detalle">Dirección, teléfonos, datos de contacto</div>
+          </div>
+        </div>
+        <div class="paso-card">
+          <div class="paso-numero">3</div>
+          <div class="paso-info">
+            <div class="paso-titulo">Cargar tus mesas</div>
+            <div class="paso-detalle">Numeración y disposición del salón</div>
+          </div>
+        </div>
+        <div class="paso-card">
+          <div class="paso-numero">4</div>
+          <div class="paso-info">
+            <div class="paso-titulo">Diseñar tu carta</div>
+            <div class="paso-detalle">Secciones, productos, precios y estilo visual</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bienvenida-cta">
+        <button class="btn btn-primary btn-large" onclick="iniciarWizardEmpresa()">
+          Empezar →
+        </button>
+        <p class="bienvenida-soporte">¿Necesitás ayuda? Escribime a vresti@gmail.com</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
   <!-- PANTALLA: DASHBOARD                                    -->
   <!-- ====================================================== -->
   <section id="screen-dashboard" class="screen">
