@@ -514,7 +514,7 @@ const AdminApp = (function() {
       btnConfirmar.textContent = 'Sí, cambiar ahora →';
     }
 
-    AdminUI.mostrarModal('modal-cambiar-carta');
+    document.getElementById('modal-cambiar-carta').classList.add('is-visible');
   }
 
   async function confirmarCambioCarta() {
