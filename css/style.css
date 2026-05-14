@@ -2675,3 +2675,153 @@ input:focus-visible {
     transform: rotate(90deg);
   }
 }
+
+
+/* ============================================================
+ * Auto-registro (patrón LegalPagaré)
+ * ============================================================ */
+
+.registro-mensaje {
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 0 0 18px;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text);
+  text-align: left;
+}
+
+.texto-trial {
+  color: #A78BFA;
+  font-weight: 600;
+}
+
+/* ============================================================
+ * Pantalla de Bienvenida (post-registro o sin empresas)
+ * ============================================================ */
+
+#screen-bienvenida {
+  min-height: 100vh;
+  padding: 2rem 1rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#screen-bienvenida.is-active {
+  display: flex;
+}
+
+.bienvenida-container {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.bienvenida-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.bienvenida-icon {
+  font-size: 3rem;
+  margin-bottom: 0.75rem;
+}
+
+.bienvenida-titulo {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0 0 0.5rem;
+  line-height: 1.2;
+}
+
+.bienvenida-titulo span {
+  background: linear-gradient(135deg, #A78BFA 0%, #D4AF37 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.bienvenida-subtitulo {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.bienvenida-pasos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.paso-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+
+.paso-card.paso-activo {
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+.paso-numero {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.15);
+  color: #A78BFA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.paso-activo .paso-numero {
+  background: linear-gradient(135deg, #7C3AED, #5B21B6);
+  color: #fff;
+}
+
+.paso-info {
+  flex: 1;
+}
+
+.paso-titulo {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 0.125rem;
+}
+
+.paso-detalle {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.bienvenida-cta {
+  text-align: center;
+}
+
+.btn-large {
+  font-size: 1rem;
+  padding: 0.875rem 2rem;
+  font-weight: 600;
+}
+
+.bienvenida-soporte {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
