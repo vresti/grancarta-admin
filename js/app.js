@@ -175,9 +175,8 @@ const AdminApp = (function() {
 
     const resp = await AdminAPI.obtenerEstructura();
 
-    AdminUI.setLoading(false);
-
     if (!resp.ok) {
+      AdminUI.setLoading(false);
       // Si el JWT venció, volver al login
       if (resp.error && (resp.error.includes('Sesión') || resp.error.includes('Token'))) {
         cerrarSesionForzado();
@@ -188,6 +187,29 @@ const AdminApp = (function() {
     }
 
     state.estructura = resp;
+
+    // Cargar cartas+locales enriquecidos por empresa (en paralelo)
+    // Esto nos da: carta_activa con nombre, URL pública, cartas_disponibles
+    const empresas = resp.empresas || [];
+    state.cartasPorEmpresa = {};
+
+    if (empresas.length > 0) {
+      const promesas = empresas.map(function(e) {
+        return AdminAPI.localListarConCarta(e.Id_Empresa);
+      });
+      const resultados = await Promise.all(promesas);
+      empresas.forEach(function(e, idx) {
+        const r = resultados[idx];
+        if (r && r.ok) {
+          state.cartasPorEmpresa[e.Id_Empresa] = {
+            locales: r.locales || [],
+            cartas_disponibles: r.cartas_disponibles || []
+          };
+        }
+      });
+    }
+
+    AdminUI.setLoading(false);
     renderDashboard();
   }
 
@@ -239,6 +261,7 @@ const AdminApp = (function() {
   function renderEmpresas() {
     const empresas = state.estructura.empresas || [];
     const locales = state.estructura.locales || [];
+    const cartasPorEmpresa = state.cartasPorEmpresa || {};
     const container = document.getElementById('empresas-list');
 
     if (empresas.length === 0) {
@@ -255,9 +278,13 @@ const AdminApp = (function() {
 
     let html = '';
     empresas.forEach(function(e) {
-      const localesDeEmpresa = locales.filter(function(l) { return l.Id_Empresa === e.Id_Empresa; });
+      const datosEmp = cartasPorEmpresa[e.Id_Empresa];
+      // Si tenemos datos enriquecidos, los usamos. Si no, fallback a los planos.
+      const localesDeEmpresa = datosEmp
+        ? datosEmp.locales
+        : locales.filter(function(l) { return l.Id_Empresa === e.Id_Empresa; });
+      const cartasDisponibles = datosEmp ? datosEmp.cartas_disponibles : [];
 
-      // Bloque de la empresa con sus locales adentro
       html += `
         <div class="empresa-block">
           <div class="empresa-block-header">
@@ -282,23 +309,7 @@ const AdminApp = (function() {
       } else {
         html += '<div class="locales-list">';
         localesDeEmpresa.forEach(function(l) {
-          html += `
-            <div class="local-card">
-              <div class="local-card-info">
-                <div class="local-card-name">${AdminUI.escapeHtml(l.Nombre)}</div>
-                <div class="local-card-meta">
-                  📍 ${AdminUI.escapeHtml(l.Direccion || 'Sin dirección')} ·
-                  ${AdminUI.escapeHtml(l.Ciudad || '')}
-                </div>
-              </div>
-              <div class="local-card-actions">
-                <button class="btn btn-secondary btn-sm"
-                        onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(e.Nombre_Comercial)}')">
-                  📋 Cartas
-                </button>
-              </div>
-            </div>
-          `;
+          html += renderLocalCard(l, e, cartasDisponibles);
         });
         html += '</div>';
       }
@@ -309,6 +320,137 @@ const AdminApp = (function() {
     container.innerHTML = html;
   }
 
+  function renderLocalCard(l, e, cartasDisponibles) {
+    const nombreEmpresa = e.Nombre_Comercial;
+    const direccion = l.Direccion || 'Sin dirección';
+    const ciudad = l.Ciudad || '';
+
+    // Carta activa (puede ser null en local recién creado)
+    const cartaActiva = l.carta_activa || null;
+    const idCartaActiva = l.Id_Carta_Activa || null;
+    const urlPublica = l.url_publica || null;
+
+    // Sección "Carta activa + switch"
+    let bloqueCartaHtml = '';
+
+    if (cartasDisponibles.length === 0) {
+      // Empresa sin cartas todavía
+      bloqueCartaHtml = `
+        <div class="local-carta-box local-carta-empty">
+          <div class="local-carta-empty-icon">📋</div>
+          <div class="local-carta-empty-text">
+            Esta empresa todavía no tiene cartas creadas.
+            <br><small>Creá la primera para asignarla a este local.</small>
+          </div>
+          <button class="btn btn-secondary btn-sm"
+                  onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
+            + Crear carta
+          </button>
+        </div>
+      `;
+    } else if (!cartaActiva) {
+      // Hay cartas en la empresa pero el local no tiene asignada todavía
+      bloqueCartaHtml = `
+        <div class="local-carta-box local-carta-needs-assign">
+          <div class="local-carta-warning">⚠️ Este local todavía no tiene carta asignada</div>
+          <div class="local-carta-select-row">
+            <select class="local-carta-select" id="select-carta-${AdminUI.escapeHtml(l.Id_Local)}">
+              <option value="">— Elegí una carta —</option>
+              ${cartasDisponibles.map(function(c) {
+                return `<option value="${AdminUI.escapeHtml(c.Id_Carta)}">${AdminUI.escapeHtml(c.Nombre)} (${AdminUI.escapeHtml(c.Template)})</option>`;
+              }).join('')}
+            </select>
+            <button class="btn btn-primary btn-sm"
+                    onclick="abrirModalCambioCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}', null, null)">
+              Asignar →
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      // Caso normal: el local tiene carta activa, ofrecer cambiar
+      const opcionesSelect = cartasDisponibles
+        .filter(function(c) { return c.Id_Carta !== idCartaActiva; })
+        .map(function(c) {
+          return `<option value="${AdminUI.escapeHtml(c.Id_Carta)}">${AdminUI.escapeHtml(c.Nombre)} (${AdminUI.escapeHtml(c.Template)})</option>`;
+        }).join('');
+
+      const hayAlternativas = opcionesSelect.length > 0;
+
+      bloqueCartaHtml = `
+        <div class="local-carta-box local-carta-active">
+          <div class="local-carta-current">
+            <span class="local-carta-current-label">📺 Mostrando ahora:</span>
+            <strong class="local-carta-current-name">${AdminUI.escapeHtml(cartaActiva.Nombre)}</strong>
+            <span class="local-carta-template-tag">${AdminUI.escapeHtml(cartaActiva.Template)}</span>
+          </div>
+          ${hayAlternativas ? `
+            <div class="local-carta-switch-row">
+              <span class="local-carta-switch-label">Cambiar a:</span>
+              <select class="local-carta-select" id="select-carta-${AdminUI.escapeHtml(l.Id_Local)}">
+                <option value="">— Elegí otra —</option>
+                ${opcionesSelect}
+              </select>
+              <button class="btn btn-secondary btn-sm"
+                      onclick="abrirModalCambioCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(idCartaActiva)}', '${AdminUI.escapeHtml(cartaActiva.Nombre)}')">
+                Cambiar →
+              </button>
+            </div>
+          ` : `
+            <div class="local-carta-only-one">
+              <small>Esta es la única carta disponible. Creá otra para poder cambiar.</small>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // Bloque URL pública
+    let urlHtml = '';
+    if (urlPublica) {
+      urlHtml = `
+        <div class="local-url-row">
+          <span class="local-url-label">🌐</span>
+          <code class="local-url-value">${AdminUI.escapeHtml(urlPublica)}</code>
+          <button class="btn-icon-mini" onclick="copiarUrlPublica('${AdminUI.escapeHtml(urlPublica)}')" title="Copiar URL">
+            📋
+          </button>
+          <a class="btn-icon-mini" href="${AdminUI.escapeHtml(urlPublica)}" target="_blank" rel="noopener" title="Abrir en nueva pestaña">
+            ↗
+          </a>
+        </div>
+      `;
+    } else if (cartaActiva) {
+      // Tiene carta pero no URL (algún slug faltante)
+      urlHtml = `
+        <div class="local-url-row local-url-missing">
+          <small>⚠️ URL pública no disponible (revisar slug de empresa o local)</small>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="local-card local-card-expanded">
+        <div class="local-card-header">
+          <div class="local-card-info">
+            <div class="local-card-name">${AdminUI.escapeHtml(l.Nombre)}</div>
+            <div class="local-card-meta">
+              📍 ${AdminUI.escapeHtml(direccion)} ${ciudad ? '· ' + AdminUI.escapeHtml(ciudad) : ''}
+            </div>
+          </div>
+          <div class="local-card-actions">
+            <button class="btn btn-secondary btn-sm"
+                    onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
+              📋 Cartas
+            </button>
+          </div>
+        </div>
+        ${bloqueCartaHtml}
+        ${urlHtml}
+      </div>
+    `;
+  }
+
   function abrirEmpresa(idEmpresa) {
     // Pantalla de detalle de empresa - próxima sesión
     AdminUI.toast('Pronto: pantalla de detalle de empresa', 'info');
@@ -317,6 +459,114 @@ const AdminApp = (function() {
   function volverADashboard() {
     state.cartasContexto = null;
     AdminUI.mostrarPantalla('screen-dashboard');
+  }
+
+
+  // ============================================================
+  // CAMBIO DE CARTA EN UN LOCAL (modal + ejecución)
+  // ============================================================
+
+  /**
+   * Abre el modal para confirmar el cambio de carta de un local.
+   * - idLocal: local que se modifica
+   * - nombreLocal: para mostrar en el modal
+   * - idCartaActualActual: ID actual (o null si el local no tenía)
+   * - nombreCartaActual: nombre de la carta actual (o null)
+   *
+   * La carta nueva se toma del <select> que está en la card del local.
+   */
+  function abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual) {
+    const select = document.getElementById('select-carta-' + idLocal);
+    if (!select) {
+      AdminUI.toast('No encontramos el selector', 'error');
+      return;
+    }
+    const idCartaNueva = select.value;
+    if (!idCartaNueva) {
+      AdminUI.toast('Elegí una carta primero', 'warn');
+      return;
+    }
+
+    // Encontrar el nombre legible de la carta nueva
+    const opt = select.options[select.selectedIndex];
+    const nombreCartaNueva = opt ? opt.text : idCartaNueva;
+
+    // Guardar contexto para el confirmar
+    state.cambioCartaContexto = {
+      idLocal: idLocal,
+      nombreLocal: nombreLocal,
+      idCartaActual: idCartaActual,
+      nombreCartaActual: nombreCartaActual || '(sin carta)',
+      idCartaNueva: idCartaNueva,
+      nombreCartaNueva: nombreCartaNueva
+    };
+
+    // Llenar el modal
+    document.getElementById('cambiar-carta-local-nombre').textContent = nombreLocal;
+    document.getElementById('cambiar-carta-actual').textContent = state.cambioCartaContexto.nombreCartaActual;
+    document.getElementById('cambiar-carta-nueva').textContent = nombreCartaNueva;
+
+    // Si es "asignación inicial" (sin carta previa), cambiar texto del botón
+    const btnConfirmar = document.getElementById('btn-confirmar-cambio');
+    if (!idCartaActual) {
+      btnConfirmar.textContent = 'Sí, asignar carta →';
+    } else {
+      btnConfirmar.textContent = 'Sí, cambiar ahora →';
+    }
+
+    AdminUI.mostrarModal('modal-cambiar-carta');
+  }
+
+  async function confirmarCambioCarta() {
+    const ctx = state.cambioCartaContexto;
+    if (!ctx) return;
+
+    const btn = document.getElementById('btn-confirmar-cambio');
+    btn.disabled = true;
+    btn.textContent = 'Cambiando…';
+
+    const resp = await AdminAPI.localCambiarCarta(ctx.idLocal, ctx.idCartaNueva);
+
+    btn.disabled = false;
+    btn.textContent = ctx.idCartaActual ? 'Sí, cambiar ahora →' : 'Sí, asignar carta →';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cambiar la carta', 'error');
+      return;
+    }
+
+    cerrarModales();
+    state.cambioCartaContexto = null;
+    AdminUI.toast('Carta cambiada. Su comercio sigue en línea ✨', 'success');
+
+    // Recargar el dashboard para reflejar el cambio
+    await cargarDashboard();
+  }
+
+  function copiarUrlPublica(url) {
+    if (!url) return;
+    try {
+      navigator.clipboard.writeText(url).then(function() {
+        AdminUI.toast('URL copiada al portapapeles', 'success');
+      }, function() {
+        AdminUI.toast('No pudimos copiar. Seleccioná y copiá manualmente.', 'warn');
+      });
+    } catch (err) {
+      // Fallback para navegadores viejos
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        AdminUI.toast('URL copiada', 'success');
+      } catch (e) {
+        AdminUI.toast('Copiá la URL manualmente', 'warn');
+      }
+      document.body.removeChild(ta);
+    }
   }
 
 
@@ -1560,6 +1810,9 @@ const AdminApp = (function() {
     abrirEmpresa,
     volverADashboard,
     abrirCartasDelLocal,
+    abrirModalCambioCarta,
+    confirmarCambioCarta,
+    copiarUrlPublica,
     abrirModalCartaNueva,
     confirmarCartaNueva,
     abrirModalDuplicarCarta,
@@ -1609,6 +1862,11 @@ function volverADashboard() { AdminApp.volverADashboard(); }
 function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
   AdminApp.abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa);
 }
+function abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual) {
+  AdminApp.abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual);
+}
+function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
+function copiarUrlPublica(url) { AdminApp.copiarUrlPublica(url); }
 function abrirModalCartaNueva() { AdminApp.abrirModalCartaNueva(); }
 function confirmarCartaNueva() { AdminApp.confirmarCartaNueva(); }
 function abrirModalDuplicarCarta(idCarta, nombreCarta) { AdminApp.abrirModalDuplicarCarta(idCarta, nombreCarta); }
