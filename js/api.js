@@ -52,6 +52,18 @@ const AdminAPI = (function() {
       return llamar('auth_verificarCodigo', { mail, codigo });
     },
 
+    /**
+     * Auto-registro de cuenta nueva (sin auth previa).
+     * Crea Cuenta + Usuario + Rol "dueño" en una sola operación.
+     */
+    registrarCuenta(mail, nombre, apellido) {
+      return llamar('public_registrar_cuenta', {
+        mail: mail,
+        nombre: nombre,
+        apellido: apellido || ''
+      });
+    },
+
     cerrarSesion() {
       return llamar('auth_cerrarSesion', {});
     },
