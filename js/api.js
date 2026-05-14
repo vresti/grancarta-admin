@@ -106,6 +106,27 @@ const AdminAPI = (function() {
       });
     },
 
+    // ---- Cartas del Local (switch atómico) ----
+    /**
+     * Cambia la carta activa de un local.
+     * id_carta_nueva es OBLIGATORIO (regla axioma: el comercio siempre tiene carta en línea).
+     */
+    localCambiarCarta(idLocal, idCartaNueva) {
+      return llamar('local_cambiar_carta', {
+        id_local: idLocal,
+        id_carta_nueva: idCartaNueva
+      });
+    },
+
+    /**
+     * Devuelve locales de la empresa enriquecidos con carta activa + URL pública
+     * + cartas disponibles para hacer switch.
+     * Una sola llamada da todo lo necesario para la UI del dashboard.
+     */
+    localListarConCarta(idEmpresa) {
+      return llamar('local_listar_con_carta', { id_empresa: idEmpresa });
+    },
+
     // ---- Cartas (Editor de Carta) ----
     cartaListar(idEmpresa, incluirArchivadas = false) {
       return llamar('carta_listar', {
