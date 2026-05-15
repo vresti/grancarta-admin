@@ -510,10 +510,18 @@ const AdminApp = (function() {
     // Bloque URL pública
     let urlHtml = '';
     if (urlPublica) {
+      // Nombre completo para el QR: "Empresa - Local" (sin el "Empresa - " si ya está)
+      const nombreLocalCompleto = l.Nombre || '';
       urlHtml = `
         <div class="local-url-row">
           <span class="local-url-label">🌐</span>
           <code class="local-url-value">${AdminUI.escapeHtml(urlPublica)}</code>
+          <button class="btn-icon-mini" onclick="descargarPdfCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(idCartaActiva)}', '${AdminUI.escapeHtml(nombreLocalCompleto)}')" title="Descargar carta en PDF">
+            📄
+          </button>
+          <button class="btn-icon-mini" onclick="descargarQrLocal('${AdminUI.escapeHtml(urlPublica)}', '${AdminUI.escapeHtml(nombreLocalCompleto)}')" title="Descargar QR para imprimir">
+            🔲
+          </button>
           <button class="btn-icon-mini" onclick="copiarUrlPublica('${AdminUI.escapeHtml(urlPublica)}')" title="Copiar URL">
             📋
           </button>
@@ -669,6 +677,273 @@ const AdminApp = (function() {
       }
       document.body.removeChild(ta);
     }
+  }
+
+
+  // ============================================================
+  // DESCARGA DE QR DE LA URL PÚBLICA
+  // ============================================================
+  // Genera un PNG 800x800 con:
+  //   Arriba:  Nombre del local (ej "La Cantina - Martinez")
+  //   Centro:  QR de la URL pública
+  //   Abajo:   Powered by GranCarta
+  //
+  // Usa la librería qrcode-generator cargada via CDN.
+
+  function descargarQrLocal(url, nombreLocal) {
+    if (!url) {
+      AdminUI.toast('No hay URL pública para generar el QR', 'error');
+      return;
+    }
+    if (typeof qrcode === 'undefined') {
+      AdminUI.toast('Cargando generador de QR…', 'info');
+      cargarScriptCDN('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js', function() {
+        descargarQrLocal(url, nombreLocal);
+      });
+      return;
+    }
+
+    try {
+      // Generar el QR con corrección de errores alta (resiste manchas/rayones)
+      const qr = qrcode(0, 'H');
+      qr.addData(url);
+      qr.make();
+
+      const SIZE = 800;
+      const QR_PADDING_TOP = 100;      // espacio para título arriba
+      const QR_PADDING_BOTTOM = 60;    // espacio para "Powered by" abajo
+      const QR_SIZE = SIZE - QR_PADDING_TOP - QR_PADDING_BOTTOM - 60;  // dejamos márgenes laterales
+
+      const canvas = document.createElement('canvas');
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext('2d');
+
+      // Fondo blanco
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, SIZE, SIZE);
+
+      // Título arriba — nombre del local
+      ctx.fillStyle = '#1A1A2A';
+      ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(nombreLocal || 'GranCarta', SIZE / 2, 50);
+
+      // Dibujar el QR centrado
+      const qrX = (SIZE - QR_SIZE) / 2;
+      const qrY = QR_PADDING_TOP;
+      const cellSize = QR_SIZE / qr.getModuleCount();
+
+      ctx.fillStyle = '#000000';
+      for (let r = 0; r < qr.getModuleCount(); r++) {
+        for (let c = 0; c < qr.getModuleCount(); c++) {
+          if (qr.isDark(r, c)) {
+            ctx.fillRect(
+              qrX + c * cellSize,
+              qrY + r * cellSize,
+              cellSize,
+              cellSize
+            );
+          }
+        }
+      }
+
+      // Texto abajo — "Powered by GranCarta"
+      ctx.fillStyle = '#666666';
+      ctx.font = '22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Powered by GranCarta', SIZE / 2, SIZE - 35);
+
+      // Descargar el PNG
+      canvas.toBlob(function(blob) {
+        const link = document.createElement('a');
+        const slug = (nombreLocal || 'qr')
+          .toLowerCase()
+          .replace(/[áä]/g, 'a').replace(/[éë]/g, 'e').replace(/[íï]/g, 'i')
+          .replace(/[óö]/g, 'o').replace(/[úü]/g, 'u').replace(/[ñ]/g, 'n')
+          .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        link.download = 'qr-' + slug + '.png';
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
+        AdminUI.toast('QR descargado · listo para imprimir', 'success');
+      }, 'image/png');
+    } catch (err) {
+      console.error('Error generando QR:', err);
+      AdminUI.toast('No pudimos generar el QR. Volvé a intentar.', 'error');
+    }
+  }
+
+
+  // ============================================================
+  // DESCARGA DE LA CARTA EN PDF
+  // ============================================================
+  // Genera un PDF A4 vertical de la carta pública:
+  //   1. Abre invisiblemente la URL pública en un iframe
+  //   2. Espera que cargue completa
+  //   3. Convierte a canvas con html2canvas
+  //   4. Inserta en jsPDF (multi-página si excede A4)
+  //   5. Descarga el archivo
+  //
+  // Tiempo estimado: 5-10 segundos para una carta con 50-100 productos.
+
+  function descargarPdfCarta(idLocal, idCarta, nombreLocal) {
+    AdminUI.toast('Generando PDF… esto puede tardar unos segundos', 'info');
+
+    // Cargar librerías si no están todavía
+    if (typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') {
+      const libsACargar = [];
+      if (typeof html2canvas === 'undefined') {
+        libsACargar.push('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+      }
+      if (typeof window.jspdf === 'undefined') {
+        libsACargar.push('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      }
+      cargarMultiplesScripts(libsACargar, function() {
+        descargarPdfCarta(idLocal, idCarta, nombreLocal);
+      });
+      return;
+    }
+
+    // Obtenemos la URL pública del local (ya está en el state.cartasPorEmpresa)
+    const idEmpresa = state.estructura && state.estructura.locales
+      ? (state.estructura.locales.find(function(l) { return l.Id_Local === idLocal; }) || {}).Id_Empresa
+      : null;
+
+    if (!idEmpresa) {
+      AdminUI.toast('No pudimos identificar la empresa del local', 'error');
+      return;
+    }
+
+    const datos = state.cartasPorEmpresa[idEmpresa];
+    const localEnriquecido = datos && datos.locales
+      ? datos.locales.find(function(l) { return l.Id_Local === idLocal; })
+      : null;
+
+    if (!localEnriquecido || !localEnriquecido.url_publica) {
+      AdminUI.toast('No hay URL pública para generar el PDF', 'error');
+      return;
+    }
+
+    // Crear iframe oculto y cargar la carta pública
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.left = '-9999px';
+    iframe.style.top = '0';
+    iframe.style.width = '794px';   // ancho A4 en px (a 96 dpi)
+    iframe.style.height = '1123px'; // alto A4 en px (irá creciendo igual)
+    iframe.style.border = 'none';
+    iframe.src = localEnriquecido.url_publica;
+
+    document.body.appendChild(iframe);
+
+    iframe.onload = function() {
+      // Esperamos un poquito a que se rendericen webfonts/imágenes
+      setTimeout(function() {
+        try {
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+          const body = doc.body;
+
+          // Ajustar el ancho del body del iframe a A4
+          body.style.width = '794px';
+
+          html2canvas(body, {
+            scale: 2,                  // mejor calidad
+            useCORS: true,
+            backgroundColor: null,
+            width: 794,
+            windowWidth: 794,
+            logging: false
+          }).then(function(canvas) {
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+            // jsPDF en A4 vertical
+            const jspdfNs = window.jspdf || window.jsPDF;
+            const PDFCtor = jspdfNs.jsPDF || jspdfNs;
+            const pdf = new PDFCtor({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: 'a4'
+            });
+
+            const pdfWidthMm = 210;
+            const pdfHeightMm = 297;
+            const imgWidthMm = pdfWidthMm;
+            const imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
+
+            // Multi-página si la carta es más alta que A4
+            if (imgHeightMm <= pdfHeightMm) {
+              pdf.addImage(imgData, 'JPEG', 0, 0, imgWidthMm, imgHeightMm);
+            } else {
+              // Cortar la imagen en porciones de tamaño A4
+              let posicionY = 0;
+              const alturaPagina = pdfHeightMm;
+              let primera = true;
+              while (posicionY < imgHeightMm) {
+                if (!primera) pdf.addPage();
+                pdf.addImage(imgData, 'JPEG', 0, -posicionY, imgWidthMm, imgHeightMm);
+                posicionY += alturaPagina;
+                primera = false;
+              }
+            }
+
+            // Generar nombre del archivo
+            const slug = (nombreLocal || 'carta')
+              .toLowerCase()
+              .replace(/[áä]/g, 'a').replace(/[éë]/g, 'e').replace(/[íï]/g, 'i')
+              .replace(/[óö]/g, 'o').replace(/[úü]/g, 'u').replace(/[ñ]/g, 'n')
+              .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            pdf.save('carta-' + slug + '.pdf');
+
+            document.body.removeChild(iframe);
+            AdminUI.toast('PDF descargado ✨', 'success');
+          }).catch(function(err) {
+            console.error('Error generando PDF:', err);
+            document.body.removeChild(iframe);
+            AdminUI.toast('No pudimos generar el PDF. Volvé a intentar.', 'error');
+          });
+        } catch (err) {
+          console.error('Error accediendo al iframe:', err);
+          document.body.removeChild(iframe);
+          AdminUI.toast('No pudimos acceder al contenido. Verificá la URL.', 'error');
+        }
+      }, 1500);  // 1.5 segundos para que se rendericen fuentes
+    };
+
+    iframe.onerror = function() {
+      document.body.removeChild(iframe);
+      AdminUI.toast('No pudimos cargar la carta para el PDF', 'error');
+    };
+  }
+
+
+  // ============================================================
+  // HELPER: CARGA DINÁMICA DE SCRIPTS DESDE CDN
+  // ============================================================
+  // Permite cargar librerías bajo demanda en vez de incluir
+  // jsPDF y html2canvas siempre (pesan ~200KB juntas).
+
+  function cargarScriptCDN(url, callback) {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = callback;
+    script.onerror = function() {
+      AdminUI.toast('No pudimos cargar la librería necesaria. Verificá tu conexión.', 'error');
+    };
+    document.head.appendChild(script);
+  }
+
+  function cargarMultiplesScripts(urls, callback) {
+    if (urls.length === 0) return callback();
+    let cargados = 0;
+    urls.forEach(function(url) {
+      cargarScriptCDN(url, function() {
+        cargados++;
+        if (cargados === urls.length) callback();
+      });
+    });
   }
 
 
@@ -1917,6 +2192,8 @@ const AdminApp = (function() {
     abrirModalCambioCarta,
     confirmarCambioCarta,
     copiarUrlPublica,
+    descargarQrLocal,
+    descargarPdfCarta,
     abrirModalCartaNueva,
     confirmarCartaNueva,
     abrirModalDuplicarCarta,
@@ -1973,6 +2250,8 @@ function abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaA
 }
 function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
 function copiarUrlPublica(url) { AdminApp.copiarUrlPublica(url); }
+function descargarQrLocal(url, nombre) { AdminApp.descargarQrLocal(url, nombre); }
+function descargarPdfCarta(idLocal, idCarta, nombre) { AdminApp.descargarPdfCarta(idLocal, idCarta, nombre); }
 function abrirModalCartaNueva() { AdminApp.abrirModalCartaNueva(); }
 function confirmarCartaNueva() { AdminApp.confirmarCartaNueva(); }
 function abrirModalDuplicarCarta(idCarta, nombreCarta) { AdminApp.abrirModalDuplicarCarta(idCarta, nombreCarta); }
