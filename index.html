@@ -101,35 +101,58 @@
         <div class="brand-tagline" id="registro-mail-display">…</div>
       </div>
 
-      <div class="registro-mensaje">
-        Tu correo no está registrado todavía. Ingresá tu nombre y creamos tu cuenta con
-        <strong class="texto-trial">30 días de prueba gratis</strong>.
+      <!-- Paso 1: confirmar mail (visible al inicio) -->
+      <div id="registro-paso-confirmar" class="registro-paso">
+        <div class="registro-pregunta">
+          ⚠️ Tu mail no está registrado todavía.
+          <br>¿Está bien escrito?
+        </div>
+
+        <button class="login-btn login-btn-secondary" onclick="volverALoginMail()">
+          ← No, lo escribí mal · corregir
+        </button>
+
+        <button class="login-btn" onclick="mostrarFormRegistro()">
+          Sí, está bien · crear mi cuenta →
+        </button>
+
+        <div class="registro-aclaracion">
+          Si esta es tu primera vez en GranCarta, vamos a crear tu cuenta
+          con <strong class="texto-trial">30 días de prueba gratis</strong>.
+        </div>
       </div>
 
-      <form id="form-registro" class="login-form" onsubmit="confirmarRegistro(event)">
-        <label class="login-label" for="input-nombre">Nombre</label>
-        <input type="text"
-               id="input-nombre"
-               class="login-input"
-               placeholder="Juan"
-               autocomplete="given-name"
-               required
-               autofocus>
+      <!-- Paso 2: form de nombre (oculto hasta confirmar) -->
+      <div id="registro-paso-form" class="registro-paso" style="display:none;">
+        <div class="registro-mensaje">
+          Genial. Ingresá tu nombre y creamos tu cuenta con
+          <strong class="texto-trial">30 días de prueba gratis</strong>.
+        </div>
 
-        <label class="login-label" for="input-apellido">Apellido</label>
-        <input type="text"
-               id="input-apellido"
-               class="login-input"
-               placeholder="García"
-               autocomplete="family-name">
+        <form id="form-registro" class="login-form" onsubmit="confirmarRegistro(event)">
+          <label class="login-label" for="input-nombre">Nombre</label>
+          <input type="text"
+                 id="input-nombre"
+                 class="login-input"
+                 placeholder="Juan"
+                 autocomplete="given-name"
+                 required>
 
-        <button type="submit" class="login-btn" id="btn-confirmar-registro">
-          Crear cuenta y continuar →
-        </button>
-        <div class="login-status" id="login-status-registro"></div>
-      </form>
+          <label class="login-label" for="input-apellido">Apellido</label>
+          <input type="text"
+                 id="input-apellido"
+                 class="login-input"
+                 placeholder="García"
+                 autocomplete="family-name">
 
-      <button class="login-back" onclick="volverALoginMail()">← Usar otro mail</button>
+          <button type="submit" class="login-btn" id="btn-confirmar-registro">
+            Crear cuenta y continuar →
+          </button>
+          <div class="login-status" id="login-status-registro"></div>
+        </form>
+
+        <button class="login-back" onclick="volverALoginMail()">← Cambiar mail</button>
+      </div>
     </div>
   </section>
 
