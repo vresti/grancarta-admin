@@ -88,14 +88,13 @@ const AdminApp = (function() {
       if (resp.needsRegister) {
         state.mail = mail;
         document.getElementById('registro-mail-display').textContent = mail;
-        document.getElementById('input-nombre').value = '';
-        document.getElementById('input-apellido').value = '';
+
+        // Resetear: arranca en paso 1 (confirmar mail)
+        document.getElementById('registro-paso-confirmar').style.display = 'block';
+        document.getElementById('registro-paso-form').style.display = 'none';
+
         AdminUI.setLoginStatus('login-status-registro', '');
         AdminUI.mostrarPantalla('screen-registro');
-        setTimeout(function() {
-          const i = document.getElementById('input-nombre');
-          if (i) i.focus();
-        }, 100);
         return;
       }
       AdminUI.setLoginStatus('login-status-1', resp.error || 'No pudimos enviar el código', 'error');
@@ -117,8 +116,28 @@ const AdminApp = (function() {
 
 
   // ============================================================
-  // AUTO-REGISTRO (patrón LegalPagaré)
+  // AUTO-REGISTRO (patrón LegalPagaré con confirmación previa)
   // ============================================================
+
+  /**
+   * Cuando el usuario llega a la pantalla de registro, primero
+   * confirma que el mail está bien escrito. Si dice "sí, está bien",
+   * se llama a esta función para mostrar el form de nombre.
+   */
+  function mostrarFormRegistro() {
+    document.getElementById('registro-paso-confirmar').style.display = 'none';
+    document.getElementById('registro-paso-form').style.display = 'block';
+
+    // Limpiar form y enfocar nombre
+    document.getElementById('input-nombre').value = '';
+    document.getElementById('input-apellido').value = '';
+    AdminUI.setLoginStatus('login-status-registro', '');
+
+    setTimeout(function() {
+      const i = document.getElementById('input-nombre');
+      if (i) i.focus();
+    }, 100);
+  }
 
   async function confirmarRegistro(event) {
     if (event && event.preventDefault) event.preventDefault();
@@ -1886,6 +1905,7 @@ const AdminApp = (function() {
     init,
     solicitarCodigo,
     verificarCodigo,
+    mostrarFormRegistro,
     confirmarRegistro,
     volverALoginMail,
     cerrarSesion,
@@ -1935,6 +1955,7 @@ const AdminApp = (function() {
 
 function solicitarCodigo(e) { AdminApp.solicitarCodigo(e); }
 function verificarCodigo(e) { AdminApp.verificarCodigo(e); }
+function mostrarFormRegistro() { AdminApp.mostrarFormRegistro(); }
 function confirmarRegistro(e) { AdminApp.confirmarRegistro(e); }
 function volverALoginMail() { AdminApp.volverALoginMail(); }
 function cerrarSesion() { AdminApp.cerrarSesion(); }
