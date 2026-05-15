@@ -778,36 +778,20 @@ const AdminApp = (function() {
 
 
   // ============================================================
-  // DESCARGA DE LA CARTA EN PDF
+  // DESCARGA DE LA CARTA EN PDF (vía window.print del navegador)
   // ============================================================
-  // Genera un PDF A4 vertical de la carta pública:
-  //   1. Abre invisiblemente la URL pública en un iframe
-  //   2. Espera que cargue completa
-  //   3. Convierte a canvas con html2canvas
-  //   4. Inserta en jsPDF (multi-página si excede A4)
-  //   5. Descarga el archivo
+  // Estrategia:
+  //   1. Abrimos la URL pública en una pestaña nueva
+  //   2. Cuando termina de cargar, disparamos window.print()
+  //   3. El navegador muestra el diálogo "Imprimir"
+  //   4. El usuario elige "Guardar como PDF" (o destino real impresora)
   //
-  // Tiempo estimado: 5-10 segundos para una carta con 50-100 productos.
+  // ¿Por qué? Porque el navegador bloquea html2canvas + iframe entre
+  // subdominios (cross-origin), aunque sean ambos *.grancarta.com.
+  // Esta solución usa la API NATIVA del navegador y siempre funciona.
 
   function descargarPdfCarta(idLocal, idCarta, nombreLocal) {
-    AdminUI.toast('Generando PDF… esto puede tardar unos segundos', 'info');
-
-    // Cargar librerías si no están todavía
-    if (typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') {
-      const libsACargar = [];
-      if (typeof html2canvas === 'undefined') {
-        libsACargar.push('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-      }
-      if (typeof window.jspdf === 'undefined') {
-        libsACargar.push('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-      }
-      cargarMultiplesScripts(libsACargar, function() {
-        descargarPdfCarta(idLocal, idCarta, nombreLocal);
-      });
-      return;
-    }
-
-    // Obtenemos la URL pública del local (ya está en el state.cartasPorEmpresa)
+    // Obtenemos la URL pública del local (ya está en state.cartasPorEmpresa)
     const idEmpresa = state.estructura && state.estructura.locales
       ? (state.estructura.locales.find(function(l) { return l.Id_Local === idLocal; }) || {}).Id_Empresa
       : null;
@@ -827,95 +811,47 @@ const AdminApp = (function() {
       return;
     }
 
-    // Crear iframe oculto y cargar la carta pública
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.left = '-9999px';
-    iframe.style.top = '0';
-    iframe.style.width = '794px';   // ancho A4 en px (a 96 dpi)
-    iframe.style.height = '1123px'; // alto A4 en px (irá creciendo igual)
-    iframe.style.border = 'none';
-    iframe.src = localEnriquecido.url_publica;
+    // Agregamos ?print=1 para que el Worker (cuando lo soporte) pueda
+    // aplicar estilos específicos de impresión (ej: ocultar elementos
+    // interactivos, ajustar márgenes). Por ahora es informativo.
+    const sep = localEnriquecido.url_publica.indexOf('?') === -1 ? '?' : '&';
+    const url = localEnriquecido.url_publica + sep + 'print=1';
 
-    document.body.appendChild(iframe);
+    AdminUI.toast('Abriendo carta para imprimir como PDF…', 'info');
 
-    iframe.onload = function() {
-      // Esperamos un poquito a que se rendericen webfonts/imágenes
+    // Abrir la URL en una pestaña nueva
+    const ventana = window.open(url, '_blank');
+
+    if (!ventana) {
+      AdminUI.toast('El navegador bloqueó la pestaña nueva. Permitilas y reintentá.', 'warn');
+      return;
+    }
+
+    // Esperar a que la página cargue + un margen para fuentes/imágenes,
+    // después disparar el diálogo de impresión automáticamente.
+    ventana.addEventListener('load', function() {
       setTimeout(function() {
         try {
-          const doc = iframe.contentDocument || iframe.contentWindow.document;
-          const body = doc.body;
-
-          // Ajustar el ancho del body del iframe a A4
-          body.style.width = '794px';
-
-          html2canvas(body, {
-            scale: 2,                  // mejor calidad
-            useCORS: true,
-            backgroundColor: null,
-            width: 794,
-            windowWidth: 794,
-            logging: false
-          }).then(function(canvas) {
-            const imgData = canvas.toDataURL('image/jpeg', 0.95);
-
-            // jsPDF en A4 vertical
-            const jspdfNs = window.jspdf || window.jsPDF;
-            const PDFCtor = jspdfNs.jsPDF || jspdfNs;
-            const pdf = new PDFCtor({
-              orientation: 'portrait',
-              unit: 'mm',
-              format: 'a4'
-            });
-
-            const pdfWidthMm = 210;
-            const pdfHeightMm = 297;
-            const imgWidthMm = pdfWidthMm;
-            const imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
-
-            // Multi-página si la carta es más alta que A4
-            if (imgHeightMm <= pdfHeightMm) {
-              pdf.addImage(imgData, 'JPEG', 0, 0, imgWidthMm, imgHeightMm);
-            } else {
-              // Cortar la imagen en porciones de tamaño A4
-              let posicionY = 0;
-              const alturaPagina = pdfHeightMm;
-              let primera = true;
-              while (posicionY < imgHeightMm) {
-                if (!primera) pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, -posicionY, imgWidthMm, imgHeightMm);
-                posicionY += alturaPagina;
-                primera = false;
-              }
-            }
-
-            // Generar nombre del archivo
-            const slug = (nombreLocal || 'carta')
-              .toLowerCase()
-              .replace(/[áä]/g, 'a').replace(/[éë]/g, 'e').replace(/[íï]/g, 'i')
-              .replace(/[óö]/g, 'o').replace(/[úü]/g, 'u').replace(/[ñ]/g, 'n')
-              .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-            pdf.save('carta-' + slug + '.pdf');
-
-            document.body.removeChild(iframe);
-            AdminUI.toast('PDF descargado ✨', 'success');
-          }).catch(function(err) {
-            console.error('Error generando PDF:', err);
-            document.body.removeChild(iframe);
-            AdminUI.toast('No pudimos generar el PDF. Volvé a intentar.', 'error');
-          });
+          ventana.focus();
+          ventana.print();
         } catch (err) {
-          console.error('Error accediendo al iframe:', err);
-          document.body.removeChild(iframe);
-          AdminUI.toast('No pudimos acceder al contenido. Verificá la URL.', 'error');
+          console.error('Error al imprimir:', err);
         }
-      }, 1500);  // 1.5 segundos para que se rendericen fuentes
-    };
+      }, 1500);  // 1.5 segundos para webfonts/imagenes
+    });
 
-    iframe.onerror = function() {
-      document.body.removeChild(iframe);
-      AdminUI.toast('No pudimos cargar la carta para el PDF', 'error');
-    };
+    // Fallback por si el evento load no se dispara (algunos navegadores
+    // con páginas cacheadas): forzar print después de 4 segundos
+    setTimeout(function() {
+      try {
+        if (ventana && !ventana.closed) {
+          ventana.focus();
+          ventana.print();
+        }
+      } catch (err) {
+        // ignoramos si ya se imprimió
+      }
+    }, 4000);
   }
 
 
