@@ -323,6 +323,59 @@
   </section>
 
   <!-- ====================================================== -->
+  <!-- MODAL: CONFIGURAR WHATSAPP DEL LOCAL (16/05/2026)       -->
+  <!-- ====================================================== -->
+  <div id="modal-whatsapp" class="modal-overlay">
+    <div class="modal-box modal-whatsapp">
+      <header class="modal-header">
+        <h3 class="modal-title">💬 WhatsApp del local</h3>
+        <button class="modal-close" onclick="cerrarModalWhatsApp()" title="Cerrar">×</button>
+      </header>
+      <div class="modal-body">
+        <input type="hidden" id="modal-ws-local-id">
+        <div class="modal-ws-local-nombre" id="modal-ws-local-nombre">—</div>
+
+        <div class="modal-ws-intro">
+          Cuando un cliente toca el botón verde en la carta web,
+          se abre WhatsApp con tu número y este mensaje listo para enviar.
+        </div>
+
+        <label class="modal-ws-label" for="modal-ws-numero">
+          Número de WhatsApp (celular)
+        </label>
+        <input type="tel"
+               id="modal-ws-numero"
+               class="modal-ws-input"
+               placeholder="+54 9 11 1234-5678"
+               autocomplete="tel">
+        <div class="modal-ws-hint">
+          💡 Lo normalizamos automáticamente al formato wa.me.
+          Aceptamos cualquier formato con o sin +, espacios o guiones.
+        </div>
+
+        <label class="modal-ws-label" for="modal-ws-mensaje">
+          Mensaje pre-rellenado
+        </label>
+        <textarea id="modal-ws-mensaje"
+                  class="modal-ws-textarea"
+                  rows="3"
+                  placeholder="Hola! Te escribo desde la carta digital de..."></textarea>
+        <div class="modal-ws-hint">
+          💡 Este texto aparece pre-cargado en WhatsApp. El cliente puede borrarlo y escribir lo que quiera.
+        </div>
+
+        <div id="modal-ws-status"></div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn-secondary" onclick="cerrarModalWhatsApp()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarWhatsApp()" id="modal-ws-btn-guardar">
+          Guardar
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ====================================================== -->
   <!-- MODAL: CAMBIAR CARTA DEL LOCAL                          -->
   <!-- ====================================================== -->
   <div id="modal-cambiar-carta" class="modal-overlay">
