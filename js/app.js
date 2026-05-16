@@ -715,7 +715,7 @@ const AdminApp = (function() {
     document.getElementById('modal-ws-status').textContent = '';
     document.getElementById('modal-ws-status').className = '';
 
-    AdminUI.mostrarModal('modal-whatsapp');
+    document.getElementById('modal-whatsapp').classList.add('is-visible');
 
     setTimeout(function() {
       const input = document.getElementById('modal-ws-numero');
@@ -724,7 +724,7 @@ const AdminApp = (function() {
   }
 
   function cerrarModalWhatsApp() {
-    AdminUI.ocultarModal('modal-whatsapp');
+    document.getElementById('modal-whatsapp').classList.remove('is-visible');
   }
 
   async function guardarWhatsApp() {
