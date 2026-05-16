@@ -539,6 +539,36 @@ const AdminApp = (function() {
       `;
     }
 
+    // Bloque WhatsApp interactivo en carta web
+    // Banner amarillo si NO está configurado (educativo + comercial).
+    // Estado neutro si SÍ está configurado.
+    const whatsappCargado = l.WhatsApp && String(l.WhatsApp).trim();
+    let whatsappHtml = '';
+    if (whatsappCargado) {
+      whatsappHtml = `
+        <div class="local-ws-row local-ws-ok">
+          <span>💬 WhatsApp: <strong>+${AdminUI.escapeHtml(l.WhatsApp)}</strong></span>
+          <button class="btn-icon-mini" onclick="abrirModalWhatsApp('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}')" title="Editar WhatsApp">
+            ✏️
+          </button>
+        </div>
+      `;
+    } else {
+      whatsappHtml = `
+        <div class="local-ws-row local-ws-missing">
+          <div class="local-ws-icon">⚠️</div>
+          <div class="local-ws-text">
+            <strong>Cargá tu WhatsApp</strong> para activar el botón verde en tu carta web.
+            <br><small>El cliente toca y te escribe directo desde el celu.</small>
+          </div>
+          <button class="btn btn-primary btn-sm"
+                  onclick="abrirModalWhatsApp('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}')">
+            💬 Configurar
+          </button>
+        </div>
+      `;
+    }
+
     return `
       <div class="local-card local-card-expanded">
         <div class="local-card-header">
@@ -557,6 +587,7 @@ const AdminApp = (function() {
         </div>
         ${bloqueCartaHtml}
         ${urlHtml}
+        ${whatsappHtml}
       </div>
     `;
   }
@@ -652,6 +683,85 @@ const AdminApp = (function() {
     // Recargar el dashboard para reflejar el cambio
     await cargarDashboard();
   }
+
+  // ============================================================
+  // CONFIGURACIÓN DE WHATSAPP POR LOCAL
+  // ============================================================
+  // El dueño configura:
+  //   - WhatsApp (número celular para wa.me)
+  //   - Mensaje pre-rellenado que aparece al hacer click
+  // El sistema normaliza el WhatsApp al guardar.
+
+  function abrirModalWhatsApp(idLocal, nombreLocal) {
+    // Buscar el local actual en state.estructura
+    let local = null;
+    if (state.estructura && state.estructura.locales) {
+      local = state.estructura.locales.find(function(l) { return l.Id_Local === idLocal; });
+    }
+    if (!local) {
+      AdminUI.toast('No pudimos cargar los datos del local', 'error');
+      return;
+    }
+
+    // Default automático del mensaje si está vacío:
+    // "Hola! Te escribo desde la carta digital de {Nombre_Local}"
+    const mensajeActual = local.Mensaje_WhatsApp_Default || '';
+    const mensajeDefault = 'Hola! Te escribo desde la carta digital de ' + nombreLocal;
+
+    document.getElementById('modal-ws-local-id').value = idLocal;
+    document.getElementById('modal-ws-local-nombre').textContent = nombreLocal;
+    document.getElementById('modal-ws-numero').value = local.WhatsApp || '';
+    document.getElementById('modal-ws-mensaje').value = mensajeActual || mensajeDefault;
+    document.getElementById('modal-ws-status').textContent = '';
+    document.getElementById('modal-ws-status').className = '';
+
+    AdminUI.mostrarModal('modal-whatsapp');
+
+    setTimeout(function() {
+      const input = document.getElementById('modal-ws-numero');
+      if (input) input.focus();
+    }, 100);
+  }
+
+  function cerrarModalWhatsApp() {
+    AdminUI.ocultarModal('modal-whatsapp');
+  }
+
+  async function guardarWhatsApp() {
+    const idLocal = document.getElementById('modal-ws-local-id').value;
+    const numero = document.getElementById('modal-ws-numero').value.trim();
+    const mensaje = document.getElementById('modal-ws-mensaje').value.trim();
+
+    if (!numero) {
+      AdminUI.setLoginStatus('modal-ws-status', 'Ingresá un número de WhatsApp', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('modal-ws-btn-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+    AdminUI.setLoginStatus('modal-ws-status', '');
+
+    const resp = await AdminAPI.localActualizar(idLocal, {
+      whatsapp: numero,
+      mensaje_whatsapp_default: mensaje
+    });
+
+    btn.disabled = false;
+    btn.textContent = 'Guardar';
+
+    if (!resp.ok) {
+      AdminUI.setLoginStatus('modal-ws-status', resp.error || 'No pudimos guardar', 'error');
+      return;
+    }
+
+    AdminUI.toast('✓ WhatsApp configurado', 'success');
+    cerrarModalWhatsApp();
+
+    // Refrescar el dashboard para que se vea el banner verde en lugar del amarillo
+    await cargarDashboard();
+  }
+
 
   function copiarUrlPublica(url) {
     if (!url) return;
@@ -2130,6 +2240,9 @@ const AdminApp = (function() {
     copiarUrlPublica,
     descargarQrLocal,
     descargarPdfCarta,
+    abrirModalWhatsApp,
+    cerrarModalWhatsApp,
+    guardarWhatsApp,
     abrirModalCartaNueva,
     confirmarCartaNueva,
     abrirModalDuplicarCarta,
@@ -2188,6 +2301,9 @@ function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
 function copiarUrlPublica(url) { AdminApp.copiarUrlPublica(url); }
 function descargarQrLocal(url, nombre) { AdminApp.descargarQrLocal(url, nombre); }
 function descargarPdfCarta(idLocal, idCarta, nombre) { AdminApp.descargarPdfCarta(idLocal, idCarta, nombre); }
+function abrirModalWhatsApp(idLocal, nombre) { AdminApp.abrirModalWhatsApp(idLocal, nombre); }
+function cerrarModalWhatsApp() { AdminApp.cerrarModalWhatsApp(); }
+function guardarWhatsApp() { AdminApp.guardarWhatsApp(); }
 function abrirModalCartaNueva() { AdminApp.abrirModalCartaNueva(); }
 function confirmarCartaNueva() { AdminApp.confirmarCartaNueva(); }
 function abrirModalDuplicarCarta(idCarta, nombreCarta) { AdminApp.abrirModalDuplicarCarta(idCarta, nombreCarta); }
