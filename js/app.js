@@ -283,19 +283,41 @@ const AdminApp = (function() {
     // Esto nos da: carta_activa con nombre, URL pública, cartas_disponibles
     const empresas = resp.empresas || [];
     state.cartasPorEmpresa = {};
+    state.publicacionesPorEmpresa = {};
 
     if (empresas.length > 0) {
-      const promesas = empresas.map(function(e) {
+      // 2 calls por empresa en paralelo:
+      //   - localListarConCarta: para "Cambiar carta default" (lógica vieja)
+      //   - publicacionListar:   para mostrar TODAS las publicaciones (modelo D)
+      const promesasCartas = empresas.map(function(e) {
         return AdminAPI.localListarConCarta(e.Id_Empresa);
       });
-      const resultados = await Promise.all(promesas);
+      const promesasPubs = empresas.map(function(e) {
+        return AdminAPI.publicacionListar(e.Id_Empresa);
+      });
+
+      const [resultadosCartas, resultadosPubs] = await Promise.all([
+        Promise.all(promesasCartas),
+        Promise.all(promesasPubs)
+      ]);
+
       empresas.forEach(function(e, idx) {
-        const r = resultados[idx];
+        const r = resultadosCartas[idx];
         if (r && r.ok) {
           state.cartasPorEmpresa[e.Id_Empresa] = {
             locales: r.locales || [],
             cartas_disponibles: r.cartas_disponibles || []
           };
+        }
+        const rp = resultadosPubs[idx];
+        if (rp && rp.ok) {
+          // Indexar publicaciones por Id_Local para lookup rápido
+          const porLocal = {};
+          (rp.publicaciones || []).forEach(function(pub) {
+            if (!porLocal[pub.Id_Local]) porLocal[pub.Id_Local] = [];
+            porLocal[pub.Id_Local].push(pub);
+          });
+          state.publicacionesPorEmpresa[e.Id_Empresa] = porLocal;
         }
       });
     }
@@ -432,7 +454,86 @@ const AdminApp = (function() {
     const idCartaActiva = l.Id_Carta_Activa || null;
     const urlPublica = l.url_publica || null;
 
-    // Sección "Carta activa + switch"
+    // ============================================================
+    // BLOQUE NUEVO (modelo D): listar TODAS las publicaciones del local
+    // Una publicación = una carta + audience_slug = una URL pública sirviendo.
+    // ============================================================
+    const pubsDeEmpresa = state.publicacionesPorEmpresa && state.publicacionesPorEmpresa[l.Id_Empresa];
+    const publicacionesDelLocal = (pubsDeEmpresa && pubsDeEmpresa[l.Id_Local]) || [];
+
+    // Orden: default primero, después por audience_slug alfabético
+    publicacionesDelLocal.sort(function(a, b) {
+      if (a.Es_Default && !b.Es_Default) return -1;
+      if (!a.Es_Default && b.Es_Default) return 1;
+      return (a.Audience_Slug || '').localeCompare(b.Audience_Slug || '');
+    });
+
+    let bloquePublicacionesHtml = '';
+    if (publicacionesDelLocal.length > 0) {
+      const tarjetas = publicacionesDelLocal.map(function(pub) {
+        const esDefault = pub.Es_Default === true;
+        const audienceSlug = pub.Audience_Slug || '';
+
+        // Badge identificador
+        const badge = esDefault
+          ? '<span class="pub-badge pub-badge-default">⭐ DEFAULT</span>'
+          : '<span class="pub-badge pub-badge-audience">📍 ' + AdminUI.escapeHtml(audienceSlug.toUpperCase()) + '</span>';
+
+        // Nombre para QR/PDF (sufijo audience cuando aplica)
+        const nombreParaArchivo = audienceSlug
+          ? (l.Nombre || '') + ' · ' + audienceSlug.charAt(0).toUpperCase() + audienceSlug.slice(1)
+          : (l.Nombre || '');
+
+        // Cada publicación tiene su propia URL (la default termina en el local,
+        // las otras agregan /audience al final)
+        const urlPub = pub.url_publica || '';
+
+        return `
+          <div class="publicacion-card${esDefault ? ' publicacion-default' : ''}">
+            <div class="publicacion-header">
+              ${badge}
+              <span class="publicacion-carta-nombre">${AdminUI.escapeHtml(pub.carta_nombre || '(sin nombre)')}</span>
+              ${pub.carta_template ? '<span class="local-carta-template-tag">' + AdminUI.escapeHtml(pub.carta_template) + '</span>' : ''}
+            </div>
+            ${urlPub ? `
+              <div class="publicacion-url-row">
+                <span class="local-url-label">🌐</span>
+                <code class="local-url-value">${AdminUI.escapeHtml(urlPub)}</code>
+                <button class="btn-icon-mini" onclick="descargarPdfPublicacion('${AdminUI.escapeHtml(urlPub)}', '${AdminUI.escapeHtml(nombreParaArchivo)}')" title="Descargar carta en PDF">
+                  📄
+                </button>
+                <button class="btn-icon-mini" onclick="descargarQrLocal('${AdminUI.escapeHtml(urlPub)}', '${AdminUI.escapeHtml(nombreParaArchivo)}')" title="Descargar QR para imprimir">
+                  🔲
+                </button>
+                <button class="btn-icon-mini" onclick="copiarUrlPublica('${AdminUI.escapeHtml(urlPub)}')" title="Copiar URL">
+                  📋
+                </button>
+                <a class="btn-icon-mini" href="${AdminUI.escapeHtml(urlPub)}" target="_blank" rel="noopener" title="Abrir en nueva pestaña">
+                  ↗
+                </a>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      bloquePublicacionesHtml = `
+        <div class="publicaciones-section">
+          <div class="publicaciones-section-title">
+            📺 Publicaciones activas (${publicacionesDelLocal.length})
+          </div>
+          <div class="publicaciones-list">
+            ${tarjetas}
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================
+    // Sección "Carta default + switch" (LEGACY de hoy)
+    // Se mantiene funcionando para que Leo pueda intercambiar la
+    // carta default mientras armamos el flujo Canal+Standby (A2.2).
+    // ============================================================
     let bloqueCartaHtml = '';
 
     if (cartasDisponibles.length === 0) {
@@ -470,7 +571,8 @@ const AdminApp = (function() {
         </div>
       `;
     } else {
-      // Caso normal: el local tiene carta activa, ofrecer cambiar
+      // Caso normal: el local tiene carta default, ofrecer cambiar A OTRA del catálogo
+      // Las publicaciones ya se muestran arriba; este bloque es solo para el SWITCH.
       const opcionesSelect = cartasDisponibles
         .filter(function(c) { return c.Id_Carta !== idCartaActiva; })
         .map(function(c) {
@@ -479,64 +581,19 @@ const AdminApp = (function() {
 
       const hayAlternativas = opcionesSelect.length > 0;
 
-      bloqueCartaHtml = `
-        <div class="local-carta-box local-carta-active">
-          <div class="local-carta-current">
-            <span class="local-carta-current-label">📺 Mostrando ahora:</span>
-            <strong class="local-carta-current-name">${AdminUI.escapeHtml(cartaActiva.Nombre)}</strong>
-            <span class="local-carta-template-tag">${AdminUI.escapeHtml(cartaActiva.Template)}</span>
-          </div>
-          ${hayAlternativas ? `
-            <div class="local-carta-switch-row">
-              <span class="local-carta-switch-label">Cambiar a:</span>
-              <select class="local-carta-select" id="select-carta-${AdminUI.escapeHtml(l.Id_Local)}">
-                <option value="">— Elegí otra —</option>
-                ${opcionesSelect}
-              </select>
-              <button class="btn btn-secondary btn-sm"
-                      onclick="abrirModalCambioCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(idCartaActiva)}', '${AdminUI.escapeHtml(cartaActiva.Nombre)}')">
-                Cambiar →
-              </button>
-            </div>
-          ` : `
-            <div class="local-carta-only-one">
-              <small>Esta es la única carta disponible. Creá otra para poder cambiar.</small>
-            </div>
-          `}
-        </div>
-      `;
-    }
-
-    // Bloque URL pública
-    let urlHtml = '';
-    if (urlPublica) {
-      // Nombre completo para el QR: "Empresa - Local" (sin el "Empresa - " si ya está)
-      const nombreLocalCompleto = l.Nombre || '';
-      urlHtml = `
-        <div class="local-url-row">
-          <span class="local-url-label">🌐</span>
-          <code class="local-url-value">${AdminUI.escapeHtml(urlPublica)}</code>
-          <button class="btn-icon-mini" onclick="descargarPdfCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(idCartaActiva)}', '${AdminUI.escapeHtml(nombreLocalCompleto)}')" title="Descargar carta en PDF">
-            📄
+      bloqueCartaHtml = hayAlternativas ? `
+        <div class="local-carta-switch-compact">
+          <span class="local-carta-switch-label">Cambiar carta default a:</span>
+          <select class="local-carta-select" id="select-carta-${AdminUI.escapeHtml(l.Id_Local)}">
+            <option value="">— Elegí otra —</option>
+            ${opcionesSelect}
+          </select>
+          <button class="btn btn-secondary btn-sm"
+                  onclick="abrirModalCambioCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(idCartaActiva)}', '${AdminUI.escapeHtml(cartaActiva.Nombre)}')">
+            Cambiar →
           </button>
-          <button class="btn-icon-mini" onclick="descargarQrLocal('${AdminUI.escapeHtml(urlPublica)}', '${AdminUI.escapeHtml(nombreLocalCompleto)}')" title="Descargar QR para imprimir">
-            🔲
-          </button>
-          <button class="btn-icon-mini" onclick="copiarUrlPublica('${AdminUI.escapeHtml(urlPublica)}')" title="Copiar URL">
-            📋
-          </button>
-          <a class="btn-icon-mini" href="${AdminUI.escapeHtml(urlPublica)}" target="_blank" rel="noopener" title="Abrir en nueva pestaña">
-            ↗
-          </a>
         </div>
-      `;
-    } else if (cartaActiva) {
-      // Tiene carta pero no URL (algún slug faltante)
-      urlHtml = `
-        <div class="local-url-row local-url-missing">
-          <small>⚠️ URL pública no disponible (revisar slug de empresa o local)</small>
-        </div>
-      `;
+      ` : '';
     }
 
     // Bloque WhatsApp interactivo en carta web
@@ -585,8 +642,8 @@ const AdminApp = (function() {
             </button>
           </div>
         </div>
+        ${bloquePublicacionesHtml}
         ${bloqueCartaHtml}
-        ${urlHtml}
         ${whatsappHtml}
       </div>
     `;
@@ -952,6 +1009,51 @@ const AdminApp = (function() {
 
     // Fallback por si el evento load no se dispara (algunos navegadores
     // con páginas cacheadas): forzar print después de 4 segundos
+    setTimeout(function() {
+      try {
+        if (ventana && !ventana.closed) {
+          ventana.focus();
+          ventana.print();
+        }
+      } catch (err) {
+        // ignoramos si ya se imprimió
+      }
+    }, 4000);
+  }
+
+
+  // ============================================================
+  // DESCARGAR PDF DE UNA PUBLICACIÓN (modelo D — día 9)
+  // ============================================================
+  // Variante simple de descargarPdfCarta() que recibe la URL completa
+  // de la publicación (ya incluye el audience_slug si corresponde).
+  //
+  // ¿Por qué una función separada en vez de modificar la existente?
+  // La función vieja deriva la URL del local (no soporta múltiples
+  // publicaciones por local). Esta variante recibe la URL específica
+  // de la publicación que se quiere imprimir, así puede manejar
+  // /sucursal-albarellos/delivery distinto de /sucursal-albarellos.
+
+  function descargarPdfPublicacion(urlPublica, nombreParaArchivo) {
+    if (!urlPublica) {
+      AdminUI.toast('URL pública no disponible', 'error');
+      return;
+    }
+
+    // ?print=1 le dice al Worker (cuando lo soporte) que aplique estilos
+    // específicos de impresión.
+    const sep = urlPublica.indexOf('?') === -1 ? '?' : '&';
+    const url = urlPublica + sep + 'print=1';
+
+    AdminUI.toast('Abriendo "' + nombreParaArchivo + '" para imprimir como PDF…', 'info');
+
+    const ventana = window.open(url, '_blank');
+    if (!ventana) {
+      AdminUI.toast('El navegador bloqueó la pestaña nueva. Permitilas y reintentá.', 'warn');
+      return;
+    }
+
+    // Esperar a que cargue + margen para fuentes/imágenes, después print().
     setTimeout(function() {
       try {
         if (ventana && !ventana.closed) {
@@ -2240,6 +2342,7 @@ const AdminApp = (function() {
     copiarUrlPublica,
     descargarQrLocal,
     descargarPdfCarta,
+    descargarPdfPublicacion,
     abrirModalWhatsApp,
     cerrarModalWhatsApp,
     guardarWhatsApp,
@@ -2301,6 +2404,7 @@ function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
 function copiarUrlPublica(url) { AdminApp.copiarUrlPublica(url); }
 function descargarQrLocal(url, nombre) { AdminApp.descargarQrLocal(url, nombre); }
 function descargarPdfCarta(idLocal, idCarta, nombre) { AdminApp.descargarPdfCarta(idLocal, idCarta, nombre); }
+function descargarPdfPublicacion(url, nombre) { AdminApp.descargarPdfPublicacion(url, nombre); }
 function abrirModalWhatsApp(idLocal, nombre) { AdminApp.abrirModalWhatsApp(idLocal, nombre); }
 function cerrarModalWhatsApp() { AdminApp.cerrarModalWhatsApp(); }
 function guardarWhatsApp() { AdminApp.guardarWhatsApp(); }
