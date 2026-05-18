@@ -139,6 +139,24 @@ const AdminAPI = (function() {
       return llamar('local_listar_con_carta', { id_empresa: idEmpresa });
     },
 
+    // ---- Publicaciones (modelo D — día 9, 18/5/2026) ----
+    // Una publicación = una carta sirviendo en una URL pública.
+    // Un local puede tener N publicaciones (default + audiences).
+    /**
+     * Lista publicaciones activas de una empresa, enriquecidas con
+     * nombre del local, nombre de la carta y URL pública (incluye audience_slug).
+     *
+     * @param {string} idEmpresa - obligatorio
+     * @param {string} idLocal - opcional, filtra a un solo local
+     * @returns { ok, publicaciones[], cantidad, agrupado_por_local[], empresa }
+     */
+    publicacionListar(idEmpresa, idLocal = null) {
+      const params = idLocal
+        ? { id_empresa: idEmpresa, id_local: idLocal }
+        : { id_empresa: idEmpresa };
+      return llamar('publicacion_listar', params);
+    },
+
     // ---- Cartas (Editor de Carta) ----
     cartaListar(idEmpresa, incluirArchivadas = false) {
       return llamar('carta_listar', {
