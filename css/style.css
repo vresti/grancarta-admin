@@ -3005,3 +3005,163 @@ input:focus-visible {
 #modal-ws-status.success {
   color: #22C55E;
 }
+
+
+/* ============================================================ */
+/* PUBLICACIONES (modelo D — día 9, 18/5/2026)                  */
+/* Una publicación = una carta sirviendo en una URL pública.    */
+/* Un local puede tener N publicaciones (default + audiences).  */
+/* ============================================================ */
+
+/* Contenedor de la sección "Publicaciones activas (N)" */
+.publicaciones-section {
+  margin-top: 0.5rem;
+  padding: 0;
+}
+
+.publicaciones-section-title {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.publicaciones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Tarjeta de cada publicación */
+.publicacion-card {
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.publicacion-card:hover {
+  border-color: rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.09);
+}
+
+/* La default tiene un toque dorado para que destaque visualmente */
+.publicacion-card.publicacion-default {
+  background: rgba(212, 175, 55, 0.04);
+  border-color: rgba(212, 175, 55, 0.28);
+}
+
+.publicacion-card.publicacion-default:hover {
+  border-color: rgba(212, 175, 55, 0.5);
+  background: rgba(212, 175, 55, 0.07);
+}
+
+/* Header de la tarjeta: badge + nombre de la carta + template */
+.publicacion-header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+
+.publicacion-carta-nombre {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text, #f0eef9);
+}
+
+/* Badges identificadores */
+.pub-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pub-badge-default {
+  background: rgba(212, 175, 55, 0.18);
+  color: #F4D03F;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+}
+
+.pub-badge-audience {
+  background: rgba(139, 92, 246, 0.18);
+  color: #C4B5FD;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+}
+
+/* Fila con la URL + botones de acción */
+.publicacion-url-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+}
+
+.publicacion-url-row .local-url-label {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.publicacion-url-row .local-url-value {
+  flex: 1;
+  min-width: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  padding: 0;
+}
+
+/* Reutilizamos .btn-icon-mini que ya existe (los 4 botones) */
+
+/* Switch compacto "Cambiar carta default a:" */
+/* Versión liviana del bloque viejo, sin la pseudo-tarjeta              */
+/* Se mantiene como puente hasta A2.2 que introducirá Canal+Standby     */
+.local-carta-switch-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.7rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  margin-top: 0.55rem;
+}
+
+.local-carta-switch-compact .local-carta-switch-label {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  white-space: nowrap;
+}
+
+.local-carta-switch-compact .local-carta-select {
+  flex: 1;
+  min-width: 180px;
+}
+
+/* Responsive: en móvil las tarjetas de publicación necesitan más respiro */
+@media (max-width: 600px) {
+  .publicacion-url-row {
+    flex-wrap: wrap;
+  }
+  .publicacion-url-row .local-url-value {
+    width: 100%;
+    flex: none;
+    margin-bottom: 0.3rem;
+  }
+}
