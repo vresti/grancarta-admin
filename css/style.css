@@ -3248,3 +3248,203 @@ input:focus-visible {
     width: 100%;
   }
 }
+
+
+/* ============================================================ */
+/* MODAL: PUBLICAR CARTA EN CANAL (A2.2 — día 10, 19/5/2026)    */
+/* Desde el editor de carta, botón "📤 Publicar ahora"          */
+/* ============================================================ */
+
+.modal-publicar-ahora {
+  max-width: 540px;
+}
+
+/* Cabecera del modal: la carta a publicar */
+.publicar-carta-info {
+  background: rgba(212, 175, 55, 0.07);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.publicar-carta-label {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.publicar-carta-nombre {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text, #f0eef9);
+  margin-bottom: 0.35rem;
+}
+
+.publicar-carta-template-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-family: 'Courier New', monospace;
+  background: rgba(139, 92, 246, 0.15);
+  color: #C4B5FD;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+.publicar-canales-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text, #f0eef9);
+  margin-bottom: 0.6rem;
+}
+
+.publicar-canales-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+/* Cada canal disponible es un radio button con cuerpo grande */
+.publicar-canal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+  background: rgba(139, 92, 246, 0.05);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.publicar-canal-item:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.publicar-canal-item input[type="radio"] {
+  margin-top: 0.2rem;
+  accent-color: #8B5CF6;
+  cursor: pointer;
+}
+
+.publicar-canal-item input[type="radio"]:checked + .publicar-canal-content {
+  /* leve highlight cuando está seleccionado */
+}
+
+.publicar-canal-item:has(input[type="radio"]:checked) {
+  border-color: rgba(212, 175, 55, 0.6);
+  background: rgba(212, 175, 55, 0.06);
+}
+
+/* Estado deshabilitado: ya tiene esta carta */
+.publicar-canal-item.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.publicar-canal-item.is-disabled:hover {
+  border-color: rgba(139, 92, 246, 0.2);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.publicar-canal-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.publicar-canal-local {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text, #f0eef9);
+  margin-bottom: 0.2rem;
+}
+
+.publicar-canal-audience {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  margin-bottom: 0.35rem;
+}
+
+.publicar-canal-url {
+  margin-bottom: 0.35rem;
+}
+
+.publicar-canal-url code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.publicar-canal-info {
+  font-size: 0.78rem;
+  color: rgba(245, 158, 11, 0.9);
+  margin-top: 0.3rem;
+}
+
+.publicar-canal-info.publicar-canal-already {
+  color: rgba(34, 197, 94, 0.85);
+}
+
+/* Empty state: empresa sin canales */
+.publicar-canales-empty {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: var(--color-text-secondary, #b5b1c9);
+}
+
+.publicar-canales-empty-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.publicar-canales-empty small {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
+/* Promesa final (verde, igual estilo que el modal de cambiar carta) */
+.publicar-carta-promesa {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+.publicar-carta-promesa-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.publicar-carta-promesa-text {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  line-height: 1.45;
+}
+
+/* Responsive: en móvil */
+@media (max-width: 600px) {
+  .publicar-canal-item {
+    padding: 0.7rem 0.85rem;
+  }
+  .publicar-canal-url code {
+    font-size: 0.65rem;
+  }
+}
