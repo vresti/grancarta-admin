@@ -148,13 +148,33 @@ const AdminAPI = (function() {
      *
      * @param {string} idEmpresa - obligatorio
      * @param {string} idLocal - opcional, filtra a un solo local
-     * @returns { ok, publicaciones[], cantidad, agrupado_por_local[], empresa }
+     * @returns { ok, publicaciones[], cantidad, agrupado_por_local[], cartas_catalogo[], empresa }
      */
     publicacionListar(idEmpresa, idLocal = null) {
       const params = idLocal
         ? { id_empresa: idEmpresa, id_local: idLocal }
         : { id_empresa: idEmpresa };
       return llamar('publicacion_listar', params);
+    },
+
+    /**
+     * Activa una carta del catálogo en un canal específico de un local.
+     * (A2.2 — día 10): swap atómico in-place o creación de canal nuevo.
+     *
+     * Si el canal ya tenía una carta, queda automáticamente "lista para
+     * publicar" (vuelve al catálogo standby). El canal NUNCA queda vacío.
+     *
+     * @param {string} idLocal       - obligatorio
+     * @param {string} audienceSlug  - '' = canal default, 'delivery'/'almuerzo'/etc
+     * @param {string} idCartaNueva  - obligatorio
+     * @returns { ok, id_publicacion, id_carta_anterior, id_carta_nueva, canal_creado, mensaje }
+     */
+    publicacionActivarCarta(idLocal, audienceSlug, idCartaNueva) {
+      return llamar('publicacion_activar_carta', {
+        id_local: idLocal,
+        audience_slug: audienceSlug || '',
+        id_carta_nueva: idCartaNueva
+      });
     },
 
     // ---- Cartas (Editor de Carta) ----
