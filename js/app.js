@@ -1053,6 +1053,14 @@ const AdminApp = (function() {
         state.cartasCatalogoPorEmpresa[empresa] = respPubs.cartas_catalogo || [];
       }
     }
+
+    // Fix día 10: si el usuario tiene abierta la pantalla "📋 Cartas" del
+    // local (viene de ahí, va a volver con ←), recargar la lista de cartas
+    // para que el flag esta_publicada se vea actualizado al volver.
+    // Sin este fix, la pantalla "Cartas" sigue mostrando datos stale.
+    if (state.cartasContexto && state.cartasContexto.idEmpresa === empresa) {
+      await cargarCartas();
+    }
   }
 
 
