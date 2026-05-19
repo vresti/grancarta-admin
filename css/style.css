@@ -3165,3 +3165,86 @@ input:focus-visible {
     margin-bottom: 0.3rem;
   }
 }
+
+
+/* ============================================================ */
+/* SWAP DE CARTA EN CANAL (A2.2 — día 10, 19/5/2026)            */
+/* Dropdown + botón "Cambiar →" dentro de cada publicacion-card */
+/* ============================================================ */
+
+.publicacion-swap-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.publicacion-swap-label {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #b5b1c9);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.publicacion-swap-select {
+  flex: 1;
+  min-width: 180px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  color: var(--color-text, #f0eef9);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.publicacion-swap-select:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.publicacion-swap-select:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.publicacion-swap-btn {
+  white-space: nowrap;
+}
+
+/* Estado vacío: "No hay otras cartas en el catálogo" */
+.publicacion-swap-empty {
+  justify-content: center;
+  padding: 0.5rem 0.6rem;
+  text-align: center;
+  color: var(--color-text-secondary, #b5b1c9);
+  font-style: italic;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.publicacion-swap-empty small {
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+/* Responsive: en móvil el dropdown ocupa toda la línea */
+@media (max-width: 600px) {
+  .publicacion-swap-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .publicacion-swap-label {
+    margin-bottom: 0.25rem;
+  }
+  .publicacion-swap-select {
+    width: 100%;
+    min-width: 0;
+  }
+  .publicacion-swap-btn {
+    width: 100%;
+  }
+}
