@@ -284,11 +284,13 @@ const AdminApp = (function() {
     const empresas = resp.empresas || [];
     state.cartasPorEmpresa = {};
     state.publicacionesPorEmpresa = {};
+    state.cartasCatalogoPorEmpresa = {};  // A2.2: catálogo "lista para publicar"
 
     if (empresas.length > 0) {
       // 2 calls por empresa en paralelo:
       //   - localListarConCarta: para "Cambiar carta default" (lógica vieja)
       //   - publicacionListar:   para mostrar TODAS las publicaciones (modelo D)
+      //                          y el catálogo de cartas "lista para publicar" (A2.2)
       const promesasCartas = empresas.map(function(e) {
         return AdminAPI.localListarConCarta(e.Id_Empresa);
       });
@@ -318,6 +320,8 @@ const AdminApp = (function() {
             porLocal[pub.Id_Local].push(pub);
           });
           state.publicacionesPorEmpresa[e.Id_Empresa] = porLocal;
+          // Catálogo standby (cartas Estado='activa' con flag esta_publicada)
+          state.cartasCatalogoPorEmpresa[e.Id_Empresa] = rp.cartas_catalogo || [];
         }
       });
     }
@@ -461,6 +465,9 @@ const AdminApp = (function() {
     const pubsDeEmpresa = state.publicacionesPorEmpresa && state.publicacionesPorEmpresa[l.Id_Empresa];
     const publicacionesDelLocal = (pubsDeEmpresa && pubsDeEmpresa[l.Id_Local]) || [];
 
+    // Catálogo de cartas standby de la empresa (A2.2)
+    const catalogoCartas = (state.cartasCatalogoPorEmpresa && state.cartasCatalogoPorEmpresa[l.Id_Empresa]) || [];
+
     // Orden: default primero, después por audience_slug alfabético
     publicacionesDelLocal.sort(function(a, b) {
       if (a.Es_Default && !b.Es_Default) return -1;
@@ -473,6 +480,7 @@ const AdminApp = (function() {
       const tarjetas = publicacionesDelLocal.map(function(pub) {
         const esDefault = pub.Es_Default === true;
         const audienceSlug = pub.Audience_Slug || '';
+        const audienceKey = audienceSlug || 'default';
 
         // Badge identificador
         const badge = esDefault
@@ -487,6 +495,44 @@ const AdminApp = (function() {
         // Cada publicación tiene su propia URL (la default termina en el local,
         // las otras agregan /audience al final)
         const urlPub = pub.url_publica || '';
+
+        // ─── Selector "Cambiar carta de este canal" (A2.2) ───
+        // Muestra todas las cartas del catálogo EXCEPTO la que ya está sirviéndose
+        // en este canal. Si la carta está publicada en OTRO canal, lo indicamos.
+        const cartasParaSwap = catalogoCartas.filter(function(c) {
+          return c.Id_Carta !== pub.Id_Carta;
+        });
+
+        let bloqueSwapHtml = '';
+        if (cartasParaSwap.length > 0) {
+          const selectId = 'swap-select-' + AdminUI.escapeHtml(l.Id_Local) + '-' + AdminUI.escapeHtml(audienceKey);
+          const opciones = cartasParaSwap.map(function(c) {
+            const indicador = c.esta_publicada ? ' (📤 publicada en otro canal)' : '';
+            return '<option value="' + AdminUI.escapeHtml(c.Id_Carta) + '" data-nombre="' + AdminUI.escapeHtml(c.Nombre) + '">'
+                 + AdminUI.escapeHtml(c.Nombre) + indicador + '</option>';
+          }).join('');
+
+          bloqueSwapHtml = `
+            <div class="publicacion-swap-row">
+              <span class="publicacion-swap-label">Cambiar a:</span>
+              <select class="publicacion-swap-select" id="${selectId}">
+                <option value="">— Elegí del catálogo —</option>
+                ${opciones}
+              </select>
+              <button class="btn btn-secondary btn-sm publicacion-swap-btn"
+                      onclick="confirmarSwapPublicacion('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(audienceSlug)}', '${AdminUI.escapeHtml(pub.Id_Carta)}', '${AdminUI.escapeHtml(pub.carta_nombre || '')}', '${selectId}')">
+                Cambiar →
+              </button>
+            </div>
+          `;
+        } else {
+          // No hay otras cartas para swap
+          bloqueSwapHtml = `
+            <div class="publicacion-swap-row publicacion-swap-empty">
+              <small>📭 No hay otras cartas "listas para publicar" en el catálogo. Creá una para poder cambiar.</small>
+            </div>
+          `;
+        }
 
         return `
           <div class="publicacion-card${esDefault ? ' publicacion-default' : ''}">
@@ -513,6 +559,7 @@ const AdminApp = (function() {
                 </a>
               </div>
             ` : ''}
+            ${bloqueSwapHtml}
           </div>
         `;
       }).join('');
@@ -530,70 +577,57 @@ const AdminApp = (function() {
     }
 
     // ============================================================
-    // Sección "Carta default + switch" (LEGACY de hoy)
-    // Se mantiene funcionando para que Leo pueda intercambiar la
-    // carta default mientras armamos el flujo Canal+Standby (A2.2).
+    // Bloque "Estado del local" (solo aparece en casos especiales)
+    // Cuando hay publicaciones activas, la gestión se hace dentro de
+    // cada publicacion-card con el dropdown "Cambiar a:". Este bloque
+    // solo se activa para 2 casos edge:
+    //   1. La empresa no tiene NINGUNA carta creada todavía
+    //   2. Hay cartas pero el local no tiene publicación viva (raro)
     // ============================================================
     let bloqueCartaHtml = '';
+    const hayPublicaciones = publicacionesDelLocal.length > 0;
 
-    if (cartasDisponibles.length === 0) {
-      // Empresa sin cartas todavía
-      bloqueCartaHtml = `
-        <div class="local-carta-box local-carta-empty">
-          <div class="local-carta-empty-icon">📋</div>
-          <div class="local-carta-empty-text">
-            Esta empresa todavía no tiene cartas creadas.
-            <br><small>Creá la primera para asignarla a este local.</small>
-          </div>
-          <button class="btn btn-secondary btn-sm"
-                  onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
-            + Crear carta
-          </button>
-        </div>
-      `;
-    } else if (!cartaActiva) {
-      // Hay cartas en la empresa pero el local no tiene asignada todavía
-      bloqueCartaHtml = `
-        <div class="local-carta-box local-carta-needs-assign">
-          <div class="local-carta-warning">⚠️ Este local todavía no tiene carta asignada</div>
-          <div class="local-carta-select-row">
-            <select class="local-carta-select" id="select-carta-${AdminUI.escapeHtml(l.Id_Local)}">
-              <option value="">— Elegí una carta —</option>
-              ${cartasDisponibles.map(function(c) {
-                return `<option value="${AdminUI.escapeHtml(c.Id_Carta)}">${AdminUI.escapeHtml(c.Nombre)} (${AdminUI.escapeHtml(c.Template)})</option>`;
-              }).join('')}
-            </select>
-            <button class="btn btn-primary btn-sm"
-                    onclick="abrirModalCambioCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}', null, null)">
-              Asignar →
+    if (!hayPublicaciones) {
+      if (catalogoCartas.length === 0) {
+        // Empresa sin cartas todavía
+        bloqueCartaHtml = `
+          <div class="local-carta-box local-carta-empty">
+            <div class="local-carta-empty-icon">📋</div>
+            <div class="local-carta-empty-text">
+              Esta empresa todavía no tiene cartas "listas para publicar".
+              <br><small>Creá la primera carta y volvé acá para asignarla a un canal.</small>
+            </div>
+            <button class="btn btn-secondary btn-sm"
+                    onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
+              + Crear carta
             </button>
           </div>
-        </div>
-      `;
-    } else {
-      // Caso normal: el local tiene carta default, ofrecer cambiar A OTRA del catálogo
-      // Las publicaciones ya se muestran arriba; este bloque es solo para el SWITCH.
-      const opcionesSelect = cartasDisponibles
-        .filter(function(c) { return c.Id_Carta !== idCartaActiva; })
-        .map(function(c) {
-          return `<option value="${AdminUI.escapeHtml(c.Id_Carta)}">${AdminUI.escapeHtml(c.Nombre)} (${AdminUI.escapeHtml(c.Template)})</option>`;
+        `;
+      } else {
+        // Hay cartas en el catálogo pero el local todavía no tiene publicación
+        // → ofrecer activar la primera (será default automáticamente)
+        const opcionesActivar = catalogoCartas.map(function(c) {
+          return '<option value="' + AdminUI.escapeHtml(c.Id_Carta) + '">' + AdminUI.escapeHtml(c.Nombre) + '</option>';
         }).join('');
 
-      const hayAlternativas = opcionesSelect.length > 0;
+        const selectIdInicial = 'swap-select-' + AdminUI.escapeHtml(l.Id_Local) + '-default';
 
-      bloqueCartaHtml = hayAlternativas ? `
-        <div class="local-carta-switch-compact">
-          <span class="local-carta-switch-label">Cambiar carta default a:</span>
-          <select class="local-carta-select" id="select-carta-${AdminUI.escapeHtml(l.Id_Local)}">
-            <option value="">— Elegí otra —</option>
-            ${opcionesSelect}
-          </select>
-          <button class="btn btn-secondary btn-sm"
-                  onclick="abrirModalCambioCarta('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(idCartaActiva)}', '${AdminUI.escapeHtml(cartaActiva.Nombre)}')">
-            Cambiar →
-          </button>
-        </div>
-      ` : '';
+        bloqueCartaHtml = `
+          <div class="local-carta-box local-carta-needs-assign">
+            <div class="local-carta-warning">⚠️ Este local todavía no tiene ninguna carta publicada</div>
+            <div class="local-carta-select-row">
+              <select class="local-carta-select" id="${selectIdInicial}">
+                <option value="">— Elegí una carta —</option>
+                ${opcionesActivar}
+              </select>
+              <button class="btn btn-primary btn-sm"
+                      onclick="confirmarSwapPublicacion('${AdminUI.escapeHtml(l.Id_Local)}', '', '', '', '${selectIdInicial}')">
+                Publicar →
+              </button>
+            </div>
+          </div>
+        `;
+      }
     }
 
     // Bloque WhatsApp interactivo en carta web
@@ -740,6 +774,90 @@ const AdminApp = (function() {
     // Recargar el dashboard para reflejar el cambio
     await cargarDashboard();
   }
+
+
+  // ============================================================
+  // SWAP DE CARTA EN CANAL (A2.2 — modelo canal+standby)
+  // ============================================================
+  // Flujo:
+  //   1. Leo elige una carta del dropdown de una publicación
+  //   2. Click "Cambiar →" → confirmarSwapPublicacion(...)
+  //      → confirmación inline mínima [Sí] [No]
+  //   3. Si confirma → ejecutarSwapPublicacion(...)
+  //      → llama AdminAPI.publicacionActivarCarta()
+  //      → recarga el dashboard
+  //
+  // La carta vieja vuelve automáticamente al catálogo "lista para
+  // publicar". El canal NUNCA queda sin carta.
+
+  function confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) {
+      AdminUI.toast('No pudimos leer la selección. Reintentá.', 'error');
+      return;
+    }
+
+    const idCartaNueva = select.value;
+    if (!idCartaNueva) {
+      AdminUI.toast('Elegí una carta del catálogo primero', 'warn');
+      return;
+    }
+
+    // Sacar nombre de la opción seleccionada (limpio, sin sufijos)
+    const opcionSeleccionada = select.options[select.selectedIndex];
+    const nombreCartaNueva = opcionSeleccionada.getAttribute('data-nombre')
+                          || opcionSeleccionada.textContent.replace(/\s*\(.*\)\s*$/, '');
+
+    // Construir mensaje según el caso
+    const audienceLabel = audienceSlug ? '"' + audienceSlug + '"' : 'default';
+    let mensaje;
+    if (idCartaActual) {
+      // Caso swap (canal ya tenía carta)
+      mensaje = 'Estás por publicar "' + nombreCartaNueva + '" en el canal ' + audienceLabel + '.\n\n' +
+                '"' + nombreCartaActual + '" volverá al catálogo "lista para publicar".\n\n' +
+                '¿Continuar?';
+    } else {
+      // Caso publicación nueva (canal nuevo o local vacío)
+      mensaje = 'Estás por publicar "' + nombreCartaNueva + '" en el canal ' + audienceLabel + '.\n\n' +
+                'Esta será la primera carta de este canal.\n\n' +
+                '¿Continuar?';
+    }
+
+    if (!confirm(mensaje)) {
+      return;
+    }
+
+    // Confirmado: ejecutar swap
+    ejecutarSwapPublicacion(idLocal, audienceSlug, idCartaNueva, nombreCartaNueva);
+  }
+
+  async function ejecutarSwapPublicacion(idLocal, audienceSlug, idCartaNueva, nombreCartaNueva) {
+    AdminUI.setLoading(true, 'Publicando carta…');
+
+    const resp = await AdminAPI.publicacionActivarCarta(idLocal, audienceSlug, idCartaNueva);
+
+    if (!resp.ok) {
+      AdminUI.setLoading(false);
+      AdminUI.toast(resp.error || 'No pudimos publicar la carta', 'error');
+      return;
+    }
+
+    // Mensaje según el caso
+    let toastMsg;
+    if (resp.canal_creado) {
+      toastMsg = '✓ "' + nombreCartaNueva + '" publicada (canal creado)';
+    } else if (resp.sin_cambios) {
+      toastMsg = 'Esta carta ya estaba publicada en este canal';
+    } else {
+      toastMsg = '✓ "' + nombreCartaNueva + '" publicada. La anterior volvió al catálogo.';
+    }
+
+    AdminUI.toast(toastMsg, 'success');
+
+    // Recargar dashboard para reflejar el swap
+    await cargarDashboard();
+  }
+
 
   // ============================================================
   // CONFIGURACIÓN DE WHATSAPP POR LOCAL
@@ -2339,6 +2457,8 @@ const AdminApp = (function() {
     abrirCartasDelLocal,
     abrirModalCambioCarta,
     confirmarCambioCarta,
+    confirmarSwapPublicacion,
+    ejecutarSwapPublicacion,
     copiarUrlPublica,
     descargarQrLocal,
     descargarPdfCarta,
@@ -2401,6 +2521,9 @@ function abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaA
   AdminApp.abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual);
 }
 function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
+function confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId) {
+  AdminApp.confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId);
+}
 function copiarUrlPublica(url) { AdminApp.copiarUrlPublica(url); }
 function descargarQrLocal(url, nombre) { AdminApp.descargarQrLocal(url, nombre); }
 function descargarPdfCarta(idLocal, idCarta, nombre) { AdminApp.descargarPdfCarta(idLocal, idCarta, nombre); }
