@@ -860,6 +860,203 @@ const AdminApp = (function() {
 
 
   // ============================================================
+  // PUBLICAR CARTA DESDE EL EDITOR (A2.2 — día 10)
+  // ============================================================
+  // El botón "📤 Publicar ahora" del editor abre un modal que muestra:
+  //   · La carta que se va a publicar
+  //   · Los canales DISPONIBLES de los locales de la empresa
+  //     (un canal por cada publicación activa existente
+  //      + opción "Abrir canal nuevo" — para A2.3 / fase 3)
+  //
+  // Al elegir un canal y confirmar, se dispara publicacion_activar_carta
+  // (mismo handler que el swap del dashboard). La carta vieja del canal
+  // vuelve al catálogo "lista para publicar".
+
+  function actualizarBotonPublicarEnEditor(carta) {
+    const btn = document.getElementById('btn-editor-publicar');
+    if (!btn) return;
+
+    // Solo se puede publicar una carta "lista para publicar" (Estado='activa')
+    if (carta && carta.Estado === 'activa') {
+      btn.style.display = '';
+      btn.disabled = false;
+      btn.title = 'Publicar esta carta en un canal de un local';
+    } else if (carta && carta.Estado === 'borrador') {
+      btn.style.display = '';
+      btn.disabled = true;
+      btn.title = 'Primero marcá la carta como "lista para publicar"';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  function abrirModalPublicarAhora() {
+    const ctx = state.editorContexto;
+    if (!ctx || !ctx.carta) {
+      AdminUI.toast('No hay carta cargada en el editor', 'error');
+      return;
+    }
+
+    const carta = ctx.carta;
+    if (carta.Estado !== 'activa') {
+      AdminUI.toast('La carta debe estar "lista para publicar" antes de publicarla', 'warn');
+      return;
+    }
+
+    // Calcular canales disponibles: una entrada por cada publicación activa
+    // existente en los locales de esta empresa.
+    const idEmpresa = carta.Id_Empresa;
+    const pubsDeEmpresa = (state.publicacionesPorEmpresa && state.publicacionesPorEmpresa[idEmpresa]) || {};
+    const locales = (state.estructura && state.estructura.locales) || [];
+    const localesDeEmpresa = locales.filter(function(l) { return l.Id_Empresa === idEmpresa; });
+
+    // Construir lista plana de canales agrupada por local
+    const canalesPosibles = [];
+
+    localesDeEmpresa.forEach(function(local) {
+      const pubsDelLocal = pubsDeEmpresa[local.Id_Local] || [];
+      pubsDelLocal.forEach(function(pub) {
+        const yaTieneEstaCarta = pub.Id_Carta === carta.Id_Carta;
+        canalesPosibles.push({
+          id_local:           local.Id_Local,
+          nombre_local:       local.Nombre,
+          audience_slug:      pub.Audience_Slug || '',
+          es_default:         pub.Es_Default === true,
+          carta_actual:       pub.carta_nombre || '(sin nombre)',
+          url_publica:        pub.url_publica || '',
+          ya_tiene_esta_carta: yaTieneEstaCarta
+        });
+      });
+    });
+
+    // Guardar contexto para confirmarPublicarAhora
+    state.publicarAhoraContexto = {
+      idCarta:           carta.Id_Carta,
+      nombreCarta:       carta.Nombre,
+      template:          carta.Template,
+      canalesPosibles:   canalesPosibles,
+      seleccionado:      null
+    };
+
+    // Render del modal
+    document.getElementById('publicar-carta-nombre').textContent = carta.Nombre;
+    document.getElementById('publicar-carta-template').textContent = carta.Template || '';
+
+    const lista = document.getElementById('publicar-canales-list');
+
+    if (canalesPosibles.length === 0) {
+      lista.innerHTML = `
+        <div class="publicar-canales-empty">
+          <div class="publicar-canales-empty-icon">📭</div>
+          <div>
+            Esta empresa todavía no tiene canales activos.
+            <br><small>Andá al dashboard, abrí un local y publicá esta carta desde ahí.</small>
+          </div>
+        </div>
+      `;
+      document.getElementById('btn-confirmar-publicar').disabled = true;
+    } else {
+      lista.innerHTML = canalesPosibles.map(function(canal, idx) {
+        const audienceLabel = canal.audience_slug
+          ? '📍 ' + AdminUI.escapeHtml(canal.audience_slug)
+          : '⭐ default';
+
+        const reemplazaHtml = canal.ya_tiene_esta_carta
+          ? '<div class="publicar-canal-info publicar-canal-already">✓ Esta carta YA está publicada acá</div>'
+          : '<div class="publicar-canal-info">⚠ Reemplazará: <strong>' + AdminUI.escapeHtml(canal.carta_actual) + '</strong></div>';
+
+        return `
+          <label class="publicar-canal-item${canal.ya_tiene_esta_carta ? ' is-disabled' : ''}">
+            <input type="radio" name="publicar-canal" value="${idx}"
+                   ${canal.ya_tiene_esta_carta ? 'disabled' : ''}
+                   onchange="seleccionarCanalParaPublicar(${idx})">
+            <div class="publicar-canal-content">
+              <div class="publicar-canal-local">📍 ${AdminUI.escapeHtml(canal.nombre_local)}</div>
+              <div class="publicar-canal-audience">Canal ${audienceLabel}</div>
+              ${canal.url_publica ? '<div class="publicar-canal-url"><code>' + AdminUI.escapeHtml(canal.url_publica) + '</code></div>' : ''}
+              ${reemplazaHtml}
+            </div>
+          </label>
+        `;
+      }).join('');
+      document.getElementById('btn-confirmar-publicar').disabled = true;  // Hasta que elija
+    }
+
+    // Mostrar el modal
+    document.getElementById('modal-publicar-ahora').classList.add('is-visible');
+  }
+
+  function seleccionarCanalParaPublicar(idx) {
+    if (!state.publicarAhoraContexto) return;
+    state.publicarAhoraContexto.seleccionado = idx;
+    document.getElementById('btn-confirmar-publicar').disabled = false;
+  }
+
+  function cerrarModalPublicar() {
+    document.getElementById('modal-publicar-ahora').classList.remove('is-visible');
+    state.publicarAhoraContexto = null;
+  }
+
+  async function confirmarPublicarAhora() {
+    const ctx = state.publicarAhoraContexto;
+    if (!ctx || ctx.seleccionado === null) {
+      AdminUI.toast('Elegí un canal primero', 'warn');
+      return;
+    }
+
+    const canal = ctx.canalesPosibles[ctx.seleccionado];
+    if (!canal) return;
+
+    const btn = document.getElementById('btn-confirmar-publicar');
+    btn.disabled = true;
+    btn.textContent = 'Publicando…';
+
+    const resp = await AdminAPI.publicacionActivarCarta(
+      canal.id_local,
+      canal.audience_slug,
+      ctx.idCarta
+    );
+
+    btn.disabled = false;
+    btn.textContent = '📤 Publicar →';
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos publicar la carta', 'error');
+      return;
+    }
+
+    cerrarModalPublicar();
+
+    // Toast contextual (opción α: nos quedamos en el editor)
+    const audienceLabel = canal.audience_slug || 'default';
+    const localLabel = canal.nombre_local;
+    let toastMsg;
+    if (resp.sin_cambios) {
+      toastMsg = 'Esta carta ya estaba publicada en ese canal';
+    } else {
+      toastMsg = '✓ Publicada en canal "' + audienceLabel + '" de ' + localLabel;
+    }
+    AdminUI.toast(toastMsg, 'success');
+
+    // Recargar publicaciones por empresa en state (para que la próxima vez
+    // que abra el modal vea el estado actualizado)
+    const empresa = ctx.idEmpresa || (state.editorContexto && state.editorContexto.carta && state.editorContexto.carta.Id_Empresa);
+    if (empresa) {
+      const respPubs = await AdminAPI.publicacionListar(empresa);
+      if (respPubs && respPubs.ok) {
+        const porLocal = {};
+        (respPubs.publicaciones || []).forEach(function(pub) {
+          if (!porLocal[pub.Id_Local]) porLocal[pub.Id_Local] = [];
+          porLocal[pub.Id_Local].push(pub);
+        });
+        state.publicacionesPorEmpresa[empresa] = porLocal;
+        state.cartasCatalogoPorEmpresa[empresa] = respPubs.cartas_catalogo || [];
+      }
+    }
+  }
+
+
+  // ============================================================
   // CONFIGURACIÓN DE WHATSAPP POR LOCAL
   // ============================================================
   // El dueño configura:
@@ -1610,6 +1807,12 @@ const AdminApp = (function() {
     document.getElementById('editor-subtitulo').textContent =
       (state.cartasContexto ? state.cartasContexto.nombreLocal + ' · ' + state.cartasContexto.nombreEmpresa : '');
 
+    // Mostrar/ocultar botón "📤 Publicar ahora" según Estado de la carta
+    // Solo "activa" = "lista para publicar" puede publicarse.
+    // borrador → no se puede (todavía está en construcción)
+    // archivada → no se puede (descartada)
+    actualizarBotonPublicarEnEditor(resp.carta);
+
     cambiarTabEditor('contenido');
     AdminUI.mostrarPantalla('screen-editor');
     renderEditor();
@@ -1625,6 +1828,7 @@ const AdminApp = (function() {
     state.editorContexto.carta = resp.carta;
     state.editorContexto.secciones = resp.secciones || [];
     state.editorContexto.stats = resp.stats || {};
+    actualizarBotonPublicarEnEditor(resp.carta);
     renderEditor();
   }
 
@@ -2459,6 +2663,10 @@ const AdminApp = (function() {
     confirmarCambioCarta,
     confirmarSwapPublicacion,
     ejecutarSwapPublicacion,
+    abrirModalPublicarAhora,
+    seleccionarCanalParaPublicar,
+    cerrarModalPublicar,
+    confirmarPublicarAhora,
     copiarUrlPublica,
     descargarQrLocal,
     descargarPdfCarta,
@@ -2524,6 +2732,10 @@ function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
 function confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId) {
   AdminApp.confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId);
 }
+function abrirModalPublicarAhora() { AdminApp.abrirModalPublicarAhora(); }
+function seleccionarCanalParaPublicar(idx) { AdminApp.seleccionarCanalParaPublicar(idx); }
+function cerrarModalPublicar() { AdminApp.cerrarModalPublicar(); }
+function confirmarPublicarAhora() { AdminApp.confirmarPublicarAhora(); }
 function copiarUrlPublica(url) { AdminApp.copiarUrlPublica(url); }
 function descargarQrLocal(url, nombre) { AdminApp.descargarQrLocal(url, nombre); }
 function descargarPdfCarta(idLocal, idCarta, nombre) { AdminApp.descargarPdfCarta(idLocal, idCarta, nombre); }
