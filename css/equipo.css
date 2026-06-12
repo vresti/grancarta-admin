@@ -251,3 +251,109 @@
   .colab-tipo-selector { grid-template-columns: 1fr; }
   .colab-nombre-row { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   PANEL DE SISTEMA (Nivel 0 — Admin)
+   ============================================================ */
+
+/* Totales */
+.sis-totales {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.sis-total-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: center;
+}
+.sis-total-num {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #f8f1e0;
+  line-height: 1;
+}
+.sis-total-label {
+  color: #8b949e;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Tabla del padrón */
+.sis-tabla-wrap { overflow-x: auto; }
+.sis-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.sis-tabla th {
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  color: #8b949e;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid #30363d;
+}
+.sis-tabla th.num, .sis-tabla td.num { text-align: right; }
+.sis-tabla td {
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid #21262d;
+  color: #e8e2d5;
+}
+.sis-tabla tbody tr:hover { background: rgba(255,255,255,0.02); }
+.sis-cuit { color: #8b949e; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+.sis-estado-ok {
+  color: #56d364; font-size: 0.78rem; font-weight: 600;
+  background: rgba(86,211,100,0.12); padding: 0.15rem 0.5rem; border-radius: 6px;
+}
+.sis-estado-off {
+  color: #8b949e; font-size: 0.78rem; font-weight: 600;
+  background: rgba(139,148,158,0.12); padding: 0.15rem 0.5rem; border-radius: 6px;
+}
+.sis-loading { text-align: center; color: #8b949e; padding: 1.5rem; }
+
+/* Integridad */
+.sis-integridad-vacio { color: #8b949e; padding: 1rem; font-style: italic; }
+.sis-banner {
+  padding: 0.9rem 1.1rem;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.sis-banner-ok { background: rgba(86,211,100,0.12); color: #56d364; border: 1px solid rgba(86,211,100,0.3); }
+.sis-banner-warn { background: rgba(245,158,11,0.12); color: #F59E0B; border: 1px solid rgba(245,158,11,0.3); }
+.sis-banner-error { background: rgba(248,81,73,0.12); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+
+.sis-chk-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.sis-chk {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 0.7rem 1rem;
+}
+.sis-chk.is-ok { border-left-color: #56d364; }
+.sis-chk.is-warn { border-left-color: #F59E0B; }
+.sis-chk.is-error { border-left-color: #f85149; }
+.sis-chk-head { display: flex; align-items: center; gap: 0.6rem; }
+.sis-chk-icon { font-size: 0.9rem; }
+.sis-chk-nombre { flex: 1; color: #e8e2d5; font-size: 0.9rem; }
+.sis-chk-count {
+  font-weight: 700; color: #8b949e; font-size: 0.85rem;
+  background: rgba(255,255,255,0.05); padding: 0.1rem 0.5rem; border-radius: 6px;
+}
+.sis-chk-ejemplos {
+  margin-top: 0.5rem; padding-left: 1.5rem;
+  color: #8b949e; font-size: 0.82rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+.sis-chk-ejemplos div { padding: 0.1rem 0; }
+
+.sis-admin-nota { color: #8b949e; font-size: 0.88rem; line-height: 1.5; }
