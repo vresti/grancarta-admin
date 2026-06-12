@@ -1,0 +1,253 @@
+/* ============================================================
+   GRANCARTA ADMIN — Estilos de la pantalla EQUIPO (Bloque A)
+   Pegar como archivo css/equipo.css y enlazar en index.html:
+     <link rel="stylesheet" href="css/equipo.css">
+   ============================================================ */
+
+/* Toolbar: buscador + filtro */
+.equipo-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.equipo-search {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.75rem 1rem;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  background: #161b22;
+  color: #e8e2d5;
+  font-size: 0.95rem;
+}
+.equipo-search:focus { outline: none; border-color: #2563EB; }
+.equipo-filtro {
+  padding: 0.75rem 1rem;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  background: #161b22;
+  color: #e8e2d5;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.equipo-loading {
+  text-align: center;
+  color: #8b949e;
+  padding: 2rem;
+}
+
+/* Lista de colaboradores */
+.equipo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.colab-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "main badge"
+    "extra extra";
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+.colab-card-main { grid-area: main; }
+.colab-card-name {
+  font-weight: 600;
+  color: #f8f1e0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.colab-card-mail {
+  color: #8b949e;
+  font-size: 0.85rem;
+  margin-top: 0.15rem;
+}
+
+.colab-rol-badge {
+  grid-area: badge;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.colab-rol-badge.is-dueno {
+  background: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.colab-rol-badge.is-gerente {
+  background: rgba(37, 99, 235, 0.15);
+  color: #6ea8ff;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+}
+
+.colab-card-todo {
+  grid-area: extra;
+  color: #56d364;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Checkboxes de locales (gerente) */
+.colab-card-locales {
+  grid-area: extra;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.colab-local-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+  transition: all 0.15s;
+  user-select: none;
+}
+.colab-local-check:hover { border-color: #484f58; }
+.colab-local-check.is-on {
+  border-color: #2563EB;
+  background: rgba(37, 99, 235, 0.12);
+  color: #f8f1e0;
+}
+.colab-local-check input { accent-color: #2563EB; cursor: pointer; }
+
+.colab-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.colab-badge-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+}
+
+.equipo-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #8b949e;
+}
+
+/* ===== MODALES ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+}
+.modal-box {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.modal-box-sm { max-width: 420px; }
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #21262d;
+}
+.modal-title { font-size: 1.1rem; font-weight: 700; color: #f8f1e0; margin: 0; }
+.modal-close {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 1.5rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-body { padding: 1.5rem; }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid #21262d;
+}
+
+/* Selector de tipo de colaborador */
+.colab-tipo-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.colab-tipo-btn {
+  background: #0d1117;
+  border: 1.5px solid #30363d;
+  border-radius: 12px;
+  padding: 1rem 0.75rem;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.colab-tipo-btn:hover { border-color: #484f58; }
+.colab-tipo-btn.is-active {
+  border-color: #2563EB;
+  background: rgba(37, 99, 235, 0.1);
+}
+.colab-tipo-icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+.colab-tipo-label { font-weight: 700; color: #f8f1e0; font-size: 0.95rem; }
+.colab-tipo-desc { color: #8b949e; font-size: 0.75rem; margin-top: 0.25rem; }
+
+.colab-nombre-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+#colab-locales-wrap { margin-top: 1.25rem; }
+.colab-locales-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.colab-sin-locales {
+  color: #8b949e;
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+.confirm-texto { color: #c9d1d9; line-height: 1.6; margin: 0; }
+
+.btn-sm { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+
+@media (max-width: 560px) {
+  .colab-tipo-selector { grid-template-columns: 1fr; }
+  .colab-nombre-row { grid-template-columns: 1fr; }
+}
