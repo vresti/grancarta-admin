@@ -309,6 +309,23 @@ const AdminAPI = (function() {
         nombre: nombre || '',
         apellido: apellido || ''
       });
+    },
+
+    // ---- Panel de Sistema (Nivel 0 — admin, 12/6/2026) ----
+    sistemaPadron() {
+      return llamar('sistema_padron', {});
+    },
+
+    sistemaIntegridad() {
+      return llamar('sistema_integridad', {});
+    },
+
+    sistemaAgregarAdmin(mail, nombre, apellido) {
+      return llamar('sistema_agregar_admin', {
+        mail: mail,
+        nombre: nombre || '',
+        apellido: apellido || ''
+      });
     }
   };
 

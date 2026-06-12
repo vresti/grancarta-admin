@@ -279,6 +279,9 @@ const AdminApp = (function() {
 
     state.estructura = resp;
 
+    // ¿El usuario es admin del sistema? → mostrar el botón "⚙ Sistema"
+    detectarAdminSistema();
+
     // Cargar cartas+locales enriquecidos por empresa (en paralelo)
     // Esto nos da: carta_activa con nombre, URL pública, cartas_disponibles
     const empresas = resp.empresas || [];
@@ -2922,6 +2925,148 @@ const AdminApp = (function() {
     }
   }
 
+  // ============================================================
+  // PANEL DE SISTEMA (Nivel 0 — Admin)
+  // ============================================================
+
+  async function detectarAdminSistema() {
+    try {
+      const resp = await AdminAPI.obtenerMiSesion();
+      const roles = (resp.ok && resp.usuario && resp.usuario.roles) ? resp.usuario.roles : [];
+      state.esAdmin = roles.some(function(r) {
+        return String(r.tipo || '').toLowerCase().trim() === 'admin';
+      });
+    } catch (e) {
+      state.esAdmin = false;
+    }
+    const btn = document.getElementById('btn-panel-sistema');
+    if (btn) btn.style.display = state.esAdmin ? 'inline-flex' : 'none';
+  }
+
+  async function abrirPanelSistema() {
+    if (!state.esAdmin) { AdminUI.toast('Solo para administradores del sistema', 'error'); return; }
+    AdminUI.mostrarPantalla('screen-sistema');
+    await recargarPadron();
+    // resetear integridad
+    document.getElementById('sis-integridad-resultado').innerHTML =
+      '<div class="sis-integridad-vacio">Tocá "Revisar integridad" para correr el test de salud de la base.</div>';
+  }
+
+  async function recargarPadron() {
+    document.getElementById('sis-padron-body').innerHTML =
+      '<tr><td colspan="6" class="sis-loading">Cargando padrón…</td></tr>';
+    const resp = await AdminAPI.sistemaPadron();
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No se pudo cargar el padrón', 'error');
+      return;
+    }
+
+    // Totales
+    const t = resp.totales;
+    document.getElementById('sis-totales').innerHTML = `
+      <div class="sis-total-card"><div class="sis-total-num">${t.empresas}</div><div class="sis-total-label">Empresas</div></div>
+      <div class="sis-total-card"><div class="sis-total-num">${t.sucursales}</div><div class="sis-total-label">Sucursales</div></div>
+      <div class="sis-total-card"><div class="sis-total-num">${t.cartas}</div><div class="sis-total-label">Cartas</div></div>
+      <div class="sis-total-card"><div class="sis-total-num">$${(t.deuda||0).toLocaleString('es-AR')}</div><div class="sis-total-label">Deuda total</div></div>
+    `;
+
+    // Tabla
+    let rows = '';
+    (resp.padron || []).forEach(function(e) {
+      const estadoClass = e.estado === 'activa' ? 'sis-estado-ok' : 'sis-estado-off';
+      rows += `
+        <tr>
+          <td>${AdminUI.escapeHtml(e.nombre)}</td>
+          <td class="sis-cuit">${AdminUI.escapeHtml(e.cuit || '—')}</td>
+          <td><span class="${estadoClass}">${AdminUI.escapeHtml(e.estado)}</span></td>
+          <td class="num">${e.sucursales}</td>
+          <td class="num">${e.cartas}</td>
+          <td class="num">${e.deuda > 0 ? '$' + e.deuda.toLocaleString('es-AR') : '—'}</td>
+        </tr>
+      `;
+    });
+    document.getElementById('sis-padron-body').innerHTML = rows ||
+      '<tr><td colspan="6" class="sis-loading">Sin empresas.</td></tr>';
+  }
+
+  async function ejecutarIntegridad() {
+    const cont = document.getElementById('sis-integridad-resultado');
+    cont.innerHTML = '<div class="sis-integridad-vacio">Revisando la base…</div>';
+    const resp = await AdminAPI.sistemaIntegridad();
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No se pudo revisar', 'error');
+      cont.innerHTML = '';
+      return;
+    }
+
+    const r = resp.resumen;
+    let banner;
+    if (r.errores > 0) {
+      banner = `<div class="sis-banner sis-banner-error">❌ ${r.errores} error(es) de integridad — requieren atención</div>`;
+    } else if (r.advertencias > 0) {
+      banner = `<div class="sis-banner sis-banner-warn">⚠ Sin errores · ${r.advertencias} advertencia(s) menor(es)</div>`;
+    } else {
+      banner = `<div class="sis-banner sis-banner-ok">✓ Base 100% sana — sin errores ni advertencias</div>`;
+    }
+
+    let items = '';
+    resp.chequeos.forEach(function(ch) {
+      const icono = ch.ok ? '✓' : (ch.severidad === 'error' ? '❌' : '⚠');
+      const cls = ch.ok ? 'is-ok' : (ch.severidad === 'error' ? 'is-error' : 'is-warn');
+      let ejemplos = '';
+      if (!ch.ok && ch.ejemplos.length) {
+        ejemplos = '<div class="sis-chk-ejemplos">' +
+          ch.ejemplos.map(function(e) { return '<div>· ' + AdminUI.escapeHtml(e) + '</div>'; }).join('') +
+          '</div>';
+      }
+      items += `
+        <div class="sis-chk ${cls}">
+          <div class="sis-chk-head">
+            <span class="sis-chk-icon">${icono}</span>
+            <span class="sis-chk-nombre">${AdminUI.escapeHtml(ch.nombre)}</span>
+            <span class="sis-chk-count">${ch.cantidad}</span>
+          </div>
+          ${ejemplos}
+        </div>
+      `;
+    });
+
+    cont.innerHTML = banner + '<div class="sis-chk-list">' + items + '</div>';
+  }
+
+  // --- Modal agregar admin ---
+  function abrirModalAgregarAdmin() {
+    document.getElementById('admin-mail').value = '';
+    document.getElementById('admin-nombre').value = '';
+    document.getElementById('admin-apellido').value = '';
+    AdminUI.setLoginStatus('admin-status', '');
+    document.getElementById('modal-agregar-admin').style.display = 'flex';
+  }
+
+  function cerrarModalAdmin() {
+    document.getElementById('modal-agregar-admin').style.display = 'none';
+  }
+
+  async function guardarAdmin() {
+    const mail = (document.getElementById('admin-mail').value || '').trim().toLowerCase();
+    const nombre = document.getElementById('admin-nombre').value.trim();
+    const apellido = document.getElementById('admin-apellido').value.trim();
+    if (!mail || mail.indexOf('@') === -1) {
+      AdminUI.setLoginStatus('admin-status', 'Ingresá un mail válido', 'error');
+      return;
+    }
+    const btn = document.getElementById('btn-guardar-admin');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const resp = await AdminAPI.sistemaAgregarAdmin(mail, nombre, apellido);
+    btn.disabled = false; btn.textContent = 'Agregar';
+    if (!resp.ok) {
+      AdminUI.setLoginStatus('admin-status', resp.error, 'error');
+      return;
+    }
+    cerrarModalAdmin();
+    AdminUI.toast('Administrador agregado', 'success');
+  }
+
   return {
     init,
     solicitarCodigo,
@@ -2985,7 +3130,14 @@ const AdminApp = (function() {
     cerrarModalColab,
     seleccionarTipoColab,
     guardarColaborador,
-    cerrarConfirmColab
+    cerrarConfirmColab,
+    // Panel de Sistema
+    abrirPanelSistema,
+    recargarPadron,
+    ejecutarIntegridad,
+    abrirModalAgregarAdmin,
+    cerrarModalAdmin,
+    guardarAdmin
   };
 
 })();
@@ -3072,6 +3224,17 @@ function cerrarModalColab() { AdminApp.cerrarModalColab(); }
 function seleccionarTipoColab(tipo) { AdminApp.seleccionarTipoColab(tipo); }
 function guardarColaborador() { AdminApp.guardarColaborador(); }
 function cerrarConfirmColab() { AdminApp.cerrarConfirmColab(); }
+
+
+// ============================================================
+// FUNCIONES GLOBALES — PANEL DE SISTEMA
+// ============================================================
+function abrirPanelSistema() { AdminApp.abrirPanelSistema(); }
+function recargarPadron() { AdminApp.recargarPadron(); }
+function ejecutarIntegridad() { AdminApp.ejecutarIntegridad(); }
+function abrirModalAgregarAdmin() { AdminApp.abrirModalAgregarAdmin(); }
+function cerrarModalAdmin() { AdminApp.cerrarModalAdmin(); }
+function guardarAdmin() { AdminApp.guardarAdmin(); }
 
 
 // ============================================================
