@@ -274,6 +274,41 @@ const AdminAPI = (function() {
 
     productoEliminar(idProducto) {
       return llamar('producto_eliminar', { id_producto: idProducto });
+    },
+
+    // ---- Colaboradores / Equipo (Bloque A — Nivel 2, 12/6/2026) ----
+    /**
+     * Lista el equipo de una empresa: secretarias (dueño) + gerentes
+     * (encargado) con sus locales habilitados, y los locales de la empresa.
+     */
+    colaboradorListar(idEmpresa) {
+      return llamar('colaborador_listar', { id_empresa: idEmpresa });
+    },
+
+    /**
+     * Da de alta una secretaría/dueño (acceso pleno a la cuenta).
+     */
+    colaboradorInvitarDueno(idEmpresa, mail, nombre, apellido) {
+      return llamar('colaborador_invitar_dueno', {
+        id_empresa: idEmpresa,
+        mail: mail,
+        nombre: nombre || '',
+        apellido: apellido || ''
+      });
+    },
+
+    /**
+     * Tilda (habilitado=true) o destilda (false) UN local para un gerente.
+     */
+    colaboradorSetEncargado(idEmpresa, mail, idLocal, habilitado, nombre, apellido) {
+      return llamar('colaborador_set_encargado', {
+        id_empresa: idEmpresa,
+        mail: mail,
+        id_local: idLocal,
+        habilitado: habilitado,
+        nombre: nombre || '',
+        apellido: apellido || ''
+      });
     }
   };
 

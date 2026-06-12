@@ -423,6 +423,9 @@ const AdminApp = (function() {
               </div>
             </div>
             <div class="empresa-block-actions">
+              <button class="btn btn-secondary btn-sm" onclick="abrirEquipo('${e.Id_Empresa}')">
+                👥 Equipo
+              </button>
               <span class="empresa-block-locales-count">${localesDeEmpresa.length} local(es)</span>
             </div>
           </div>
@@ -2654,6 +2657,271 @@ const AdminApp = (function() {
   // EXPORTAR API PÚBLICA
   // ============================================================
 
+  // ============================================================
+  // EQUIPO / COLABORADORES (Bloque A — Nivel 2)
+  // ============================================================
+
+  const equipoState = {
+    idEmpresa: null,
+    nombreEmpresa: '',
+    colaboradores: [],
+    localesEmpresa: [],
+    tipoNuevo: 'gerente'
+  };
+
+  async function abrirEquipo(idEmpresa) {
+    equipoState.idEmpresa = idEmpresa;
+    const emp = (state.estructura.empresas || []).find(function(e) {
+      return e.Id_Empresa === idEmpresa;
+    });
+    equipoState.nombreEmpresa = emp ? emp.Nombre_Comercial : idEmpresa;
+
+    AdminUI.mostrarPantalla('screen-equipo');
+    document.getElementById('equipo-empresa-nombre').textContent = equipoState.nombreEmpresa;
+    document.getElementById('equipo-buscador').value = '';
+    document.getElementById('equipo-list').innerHTML =
+      '<div class="equipo-loading">Cargando equipo…</div>';
+
+    await cargarEquipo();
+  }
+
+  async function cargarEquipo() {
+    const resp = await AdminAPI.colaboradorListar(equipoState.idEmpresa);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cargar el equipo', 'error');
+      document.getElementById('equipo-list').innerHTML = '';
+      return;
+    }
+    equipoState.colaboradores = resp.colaboradores || [];
+    equipoState.localesEmpresa = resp.locales_empresa || [];
+
+    const filtro = document.getElementById('equipo-filtro-local');
+    let opts = '<option value="">Todos los locales</option>';
+    equipoState.localesEmpresa.forEach(function(l) {
+      opts += '<option value="' + l.id_local + '">' + AdminUI.escapeHtml(l.nombre) + '</option>';
+    });
+    filtro.innerHTML = opts;
+
+    renderEquipo();
+  }
+
+  function renderEquipo() {
+    const term = (document.getElementById('equipo-buscador').value || '').toLowerCase().trim();
+    const localFiltro = document.getElementById('equipo-filtro-local').value || '';
+
+    let lista = equipoState.colaboradores.slice();
+
+    if (term) {
+      lista = lista.filter(function(c) {
+        return (c.mail || '').toLowerCase().indexOf(term) !== -1
+            || (c.nombre || '').toLowerCase().indexOf(term) !== -1
+            || (c.apellido || '').toLowerCase().indexOf(term) !== -1;
+      });
+    }
+
+    if (localFiltro) {
+      lista = lista.filter(function(c) {
+        return c.es_dueno || c.locales_habilitados.indexOf(localFiltro) !== -1;
+      });
+    }
+
+    const cont = document.getElementById('equipo-list');
+    const empty = document.getElementById('equipo-empty');
+
+    if (lista.length === 0) {
+      cont.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    let html = '';
+    lista.forEach(function(c) {
+      const dniBadge = c.tiene_dni ? '' :
+        '<span class="colab-badge colab-badge-warn">sin DNI</span>';
+
+      if (c.es_dueno) {
+        html += `
+          <div class="colab-card">
+            <div class="colab-card-main">
+              <div class="colab-card-name">${AdminUI.escapeHtml(c.nombre || c.mail)} ${dniBadge}</div>
+              <div class="colab-card-mail">${AdminUI.escapeHtml(c.mail)}</div>
+            </div>
+            <span class="colab-rol-badge is-dueno">${AdminUI.escapeHtml(c.rol_visible)}</span>
+            <div class="colab-card-todo">✓ Acceso pleno (ve todo)</div>
+          </div>
+        `;
+      } else {
+        let checks = '';
+        equipoState.localesEmpresa.forEach(function(l) {
+          const habil = c.locales_habilitados.indexOf(l.id_local) !== -1;
+          checks += `
+            <label class="colab-local-check ${habil ? 'is-on' : ''}">
+              <input type="checkbox" ${habil ? 'checked' : ''}
+                onchange="toggleLocalColaborador('${c.mail}', '${l.id_local}', this.checked, ${c.locales_habilitados.length})">
+              <span>${AdminUI.escapeHtml(l.nombre)}</span>
+            </label>
+          `;
+        });
+        html += `
+          <div class="colab-card">
+            <div class="colab-card-main">
+              <div class="colab-card-name">${AdminUI.escapeHtml(c.nombre || c.mail)} ${dniBadge}</div>
+              <div class="colab-card-mail">${AdminUI.escapeHtml(c.mail)}</div>
+            </div>
+            <span class="colab-rol-badge is-gerente">${AdminUI.escapeHtml(c.rol_visible)}</span>
+            <div class="colab-card-locales">${checks}</div>
+          </div>
+        `;
+      }
+    });
+    cont.innerHTML = html;
+  }
+
+  function filtrarEquipo() { renderEquipo(); }
+
+  async function toggleLocalColaborador(mail, idLocal, checked, cantActual) {
+    if (!checked && cantActual <= 1) {
+      mostrarConfirmColab({
+        titulo: 'Dar de baja del equipo',
+        texto: 'Si quitás este local, la persona se queda sin ningún local y pierde el acceso. ¿Confirmás la baja total?',
+        okLabel: 'Sí, dar de baja',
+        onOk: async function() { await ejecutarSetEncargado(mail, idLocal, false); },
+        onCancel: function() { cargarEquipo(); }
+      });
+      return;
+    }
+    await ejecutarSetEncargado(mail, idLocal, checked);
+  }
+
+  async function ejecutarSetEncargado(mail, idLocal, habilitado) {
+    const resp = await AdminAPI.colaboradorSetEncargado(
+      equipoState.idEmpresa, mail, idLocal, habilitado);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No se pudo actualizar', 'error');
+    } else {
+      AdminUI.toast(resp.mensaje || 'Actualizado', 'success');
+    }
+    await cargarEquipo();
+  }
+
+  function abrirModalAgregarColaborador() {
+    equipoState.tipoNuevo = 'gerente';
+    seleccionarTipoColab('gerente');
+    document.getElementById('colab-mail').value = '';
+    document.getElementById('colab-nombre').value = '';
+    document.getElementById('colab-apellido').value = '';
+    AdminUI.setLoginStatus('colab-status', '');
+    let checks = '';
+    equipoState.localesEmpresa.forEach(function(l) {
+      checks += `
+        <label class="colab-local-check">
+          <input type="checkbox" value="${l.id_local}">
+          <span>${AdminUI.escapeHtml(l.nombre)}</span>
+        </label>
+      `;
+    });
+    document.getElementById('colab-locales-checks').innerHTML = checks ||
+      '<div class="colab-sin-locales">Esta empresa no tiene locales todavía. Creá un local primero.</div>';
+    document.getElementById('modal-agregar-colab').style.display = 'flex';
+  }
+
+  function cerrarModalColab() {
+    document.getElementById('modal-agregar-colab').style.display = 'none';
+  }
+
+  function seleccionarTipoColab(tipo) {
+    equipoState.tipoNuevo = tipo;
+    document.getElementById('colab-tipo-gerente').classList.toggle('is-active', tipo === 'gerente');
+    document.getElementById('colab-tipo-secretaria').classList.toggle('is-active', tipo === 'secretaria');
+    document.getElementById('colab-locales-wrap').style.display =
+      (tipo === 'gerente') ? 'block' : 'none';
+  }
+
+  async function guardarColaborador() {
+    const mail = (document.getElementById('colab-mail').value || '').trim().toLowerCase();
+    const nombre = document.getElementById('colab-nombre').value.trim();
+    const apellido = document.getElementById('colab-apellido').value.trim();
+
+    if (!mail || mail.indexOf('@') === -1) {
+      AdminUI.setLoginStatus('colab-status', 'Ingresá un mail válido', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-guardar-colab');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    if (equipoState.tipoNuevo === 'secretaria') {
+      const resp = await AdminAPI.colaboradorInvitarDueno(
+        equipoState.idEmpresa, mail, nombre, apellido);
+      btn.disabled = false;
+      btn.textContent = 'Agregar';
+      if (!resp.ok) {
+        AdminUI.setLoginStatus('colab-status', resp.error, 'error');
+        return;
+      }
+      cerrarModalColab();
+      AdminUI.toast('Secretaría/dueño agregado', 'success');
+      await cargarEquipo();
+      return;
+    }
+
+    const checks = document.querySelectorAll('#colab-locales-checks input[type=checkbox]:checked');
+    if (checks.length === 0) {
+      btn.disabled = false;
+      btn.textContent = 'Agregar';
+      mostrarConfirmColab({
+        titulo: 'Asigná un rol',
+        texto: 'Un gerente tiene que estar habilitado al menos en un local. Tildá dónde va a trabajar antes de guardar.',
+        okLabel: 'Entendido',
+        soloOk: true,
+        onOk: function() {}
+      });
+      return;
+    }
+
+    let ok = true;
+    for (let i = 0; i < checks.length; i++) {
+      const idLocal = checks[i].value;
+      const resp = await AdminAPI.colaboradorSetEncargado(
+        equipoState.idEmpresa, mail, idLocal, true, nombre, apellido);
+      if (!resp.ok) { ok = false; AdminUI.toast(resp.error, 'error'); break; }
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Agregar';
+    if (ok) {
+      cerrarModalColab();
+      AdminUI.toast('Gerente agregado', 'success');
+      await cargarEquipo();
+    }
+  }
+
+  function mostrarConfirmColab(cfg) {
+    document.getElementById('confirm-colab-titulo').textContent = cfg.titulo;
+    document.getElementById('confirm-colab-texto').textContent = cfg.texto;
+    const btnOk = document.getElementById('confirm-colab-ok');
+    const btnCancel = document.getElementById('confirm-colab-cancelar');
+    btnOk.textContent = cfg.okLabel || 'Confirmar';
+    btnCancel.style.display = cfg.soloOk ? 'none' : 'inline-flex';
+    btnOk.onclick = function() {
+      cerrarConfirmColab();
+      if (cfg.onOk) cfg.onOk();
+    };
+    equipoState._onCancel = cfg.onCancel || null;
+    document.getElementById('modal-confirm-colab').style.display = 'flex';
+  }
+
+  function cerrarConfirmColab() {
+    document.getElementById('modal-confirm-colab').style.display = 'none';
+    if (equipoState._onCancel) {
+      const cb = equipoState._onCancel;
+      equipoState._onCancel = null;
+      cb();
+    }
+  }
+
   return {
     init,
     solicitarCodigo,
@@ -2708,7 +2976,16 @@ const AdminApp = (function() {
     cerrarVistaPrevia,
     cambiarDispositivoPreview,
     seleccionarTemplate,
-    cerrarModales
+    cerrarModales,
+    // Equipo / Colaboradores
+    abrirEquipo,
+    filtrarEquipo,
+    toggleLocalColaborador,
+    abrirModalAgregarColaborador,
+    cerrarModalColab,
+    seleccionarTipoColab,
+    guardarColaborador,
+    cerrarConfirmColab
   };
 
 })();
@@ -2782,6 +3059,19 @@ function abrirVistaPrevia() { AdminApp.abrirVistaPrevia(); }
 function cerrarVistaPrevia() { AdminApp.cerrarVistaPrevia(); }
 function cambiarDispositivoPreview(d) { AdminApp.cambiarDispositivoPreview(d); }
 function seleccionarTemplate(t) { AdminApp.seleccionarTemplate(t); }
+
+
+// ============================================================
+// FUNCIONES GLOBALES — EQUIPO / COLABORADORES
+// ============================================================
+function abrirEquipo(idEmpresa) { AdminApp.abrirEquipo(idEmpresa); }
+function filtrarEquipo() { AdminApp.filtrarEquipo(); }
+function toggleLocalColaborador(mail, idLocal, checked, cant) { AdminApp.toggleLocalColaborador(mail, idLocal, checked, cant); }
+function abrirModalAgregarColaborador() { AdminApp.abrirModalAgregarColaborador(); }
+function cerrarModalColab() { AdminApp.cerrarModalColab(); }
+function seleccionarTipoColab(tipo) { AdminApp.seleccionarTipoColab(tipo); }
+function guardarColaborador() { AdminApp.guardarColaborador(); }
+function cerrarConfirmColab() { AdminApp.cerrarConfirmColab(); }
 
 
 // ============================================================
