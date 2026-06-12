@@ -150,53 +150,13 @@
   color: #8b949e;
 }
 
-/* ===== MODALES ===== */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-  backdrop-filter: blur(4px);
-}
-.modal-box {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 16px;
-  width: 100%;
-  max-width: 520px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
+/* ===== MODALES =====
+   NOTA: .modal-overlay, .modal-box, .modal-header, .modal-title,
+   .modal-close, .modal-body y .modal-actions YA están definidos en
+   style.css (con el ocultamiento correcto: display:none hasta is-visible).
+   NO los redefinimos acá para no pisar esa regla. Solo agregamos lo que
+   falta en el original: */
 .modal-box-sm { max-width: 420px; }
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #21262d;
-}
-.modal-title { font-size: 1.1rem; font-weight: 700; color: #f8f1e0; margin: 0; }
-.modal-close {
-  background: none;
-  border: none;
-  color: #8b949e;
-  font-size: 1.5rem;
-  cursor: pointer;
-  line-height: 1;
-}
-.modal-body { padding: 1.5rem; }
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding: 1.25rem 1.5rem;
-  border-top: 1px solid #21262d;
-}
 
 /* Selector de tipo de colaborador */
 .colab-tipo-selector {
