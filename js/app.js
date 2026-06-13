@@ -47,8 +47,16 @@ const AdminApp = (function() {
       state.jwt = jwt;
       state.mail = mail || '';
 
-      // Si tenemos JWT pero no mail, lo pedimos al backend
-      if (!mail) {
+      // PERFORMANCE/UX (13/6): mostramos el loading desde YA, sobre la
+      // pantalla del dashboard (aún vacía). Así el usuario NUNCA ve la
+      // pantalla de login del admin mientras carga (antes parpadeaba un
+      // "segundo login" falso). La puerta ya nos pasó el mail en la URL.
+      AdminUI.setLoading(true);
+      AdminUI.mostrarPantalla('screen-dashboard');
+
+      // Solo si NO tenemos el mail (caso raro: el mail no vino en la URL),
+      // lo pedimos al backend. Con la puerta pasando ?m=, esto casi nunca corre.
+      if (!state.mail) {
         const resp = await AdminAPI.obtenerMiSesion();
         if (resp.ok && resp.usuario) {
           state.mail = resp.usuario.mail || resp.usuario.Mail || '';
