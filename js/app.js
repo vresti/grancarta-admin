@@ -322,6 +322,11 @@ const AdminApp = (function() {
     const estructura = resp.estructura || {};
     state.estructura = estructura;
 
+    // SCOPE A UNA EMPRESA (14/6): el admin trabaja sobre LA empresa que se
+    // eligió en app.grancarta.com. Ese id viaja dentro del token contextual
+    // (id_empresa_activa). Lo leemos para mostrar solo esa empresa, no las 5.
+    state.idEmpresaActiva = _idEmpresaDelToken();
+
     // es_admin viene en la misma respuesta → mostramos el botón sin otra llamada
     state.esAdmin = !!resp.es_admin;
     const btnSis = document.getElementById('btn-panel-sistema');
@@ -369,47 +374,51 @@ const AdminApp = (function() {
     window.location.href = 'https://app.grancarta.com';
   }
 
+  // Lee id_empresa_activa del payload del token contextual (solo lectura;
+  // el backend valida la firma en cada llamada). Si no hay o falla, null.
+  function _idEmpresaDelToken() {
+    try {
+      const jwt = localStorage.getItem('admin_jwt');
+      if (!jwt) return null;
+      let b64 = jwt.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const payload = JSON.parse(atob(b64));
+      return payload.id_empresa_activa || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function renderDashboard() {
-    // Header info
-    const cuenta = state.estructura.cuenta;
-    const accountInfo = cuenta
-      ? 'Plan ' + (cuenta.Plan || 'trial') + ' · ' + state.estructura.stats.empresas_count + ' empresa(s)'
-      : 'Cuenta no configurada';
-    document.getElementById('dash-account-info').textContent = accountInfo;
+    // Empresa activa (la elegida en app). Fallback a la primera si el token
+    // no trae scope, para no romper nunca.
+    const empresas = state.estructura.empresas || [];
+    let activa = null;
+    if (state.idEmpresaActiva) {
+      activa = empresas.find(function(e) { return e.Id_Empresa === state.idEmpresaActiva; }) || null;
+    }
+    if (!activa) activa = empresas[0] || null;
 
-    // Stats
-    renderStats();
+    // Barra: nombre de la empresa + CUIT. Nada más.
+    const nombreEl = document.getElementById('dash-empresa-nombre');
+    const cuitEl = document.getElementById('dash-account-info');
+    if (nombreEl) nombreEl.textContent = activa ? (activa.Nombre_Comercial || 'Empresa') : 'GranCarta';
+    if (cuitEl) cuitEl.textContent = activa ? (activa.CUIT || '') : '';
 
-    // Empresas
+    // Sucursales de esa empresa
     renderEmpresas();
   }
 
-  function renderStats() {
-    const stats = state.estructura.stats;
-    const container = document.getElementById('dash-stats');
-
-    container.innerHTML = `
-      <div class="stat-card">
-        <div class="stat-label">Empresas</div>
-        <div class="stat-value">${stats.empresas_count}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Locales</div>
-        <div class="stat-value">${stats.locales_count}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Mesas</div>
-        <div class="stat-value">${stats.mesas_count}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Productos</div>
-        <div class="stat-value">${stats.productos_count}</div>
-      </div>
-    `;
-  }
-
   function renderEmpresas() {
-    const empresas = state.estructura.empresas || [];
+    // Scope a la empresa activa (la elegida en app). Si por algún motivo el
+    // token no trae scope, caemos al comportamiento anterior (todas), para
+    // no romper nunca.
+    const todasEmpresas = state.estructura.empresas || [];
+    let empresas = todasEmpresas;
+    if (state.idEmpresaActiva) {
+      const _filtradas = todasEmpresas.filter(function(e) { return e.Id_Empresa === state.idEmpresaActiva; });
+      if (_filtradas.length > 0) empresas = _filtradas;
+    }
     const locales = state.estructura.locales || [];
     const cartasPorEmpresa = state.cartasPorEmpresa || {};
     const container = document.getElementById('empresas-list');
