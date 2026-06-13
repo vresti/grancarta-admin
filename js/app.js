@@ -59,7 +59,8 @@ const AdminApp = (function() {
 
       await cargarDashboard();
     } else {
-      AdminUI.mostrarPantalla('screen-login-mail');
+      // PUERTA ÚNICA: admin NO tiene login propio. Sin token → a la puerta (app).
+      window.location.replace('https://app.grancarta.com');
     }
   }
 
