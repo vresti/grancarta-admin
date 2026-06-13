@@ -320,6 +320,11 @@ const AdminAPI = (function() {
       return llamar('sistema_integridad', {});
     },
 
+    // ---- Dashboard unificado (Performance/Pareto, 13/6) ----
+    dashboardCompleto() {
+      return llamar('dashboard_completo', {});
+    },
+
     sistemaAgregarAdmin(mail, nombre, apellido) {
       return llamar('sistema_agregar_admin', {
         mail: mail,

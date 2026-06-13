@@ -265,11 +265,13 @@ const AdminApp = (function() {
     AdminUI.setLoading(true);
     AdminUI.mostrarPantalla('screen-dashboard');
 
-    const resp = await AdminAPI.obtenerEstructura();
+    // PERFORMANCE/PARETO (13/6): UNA sola llamada trae todo el dashboard
+    // (estructura + cartas + publicaciones por empresa + es_admin).
+    // Antes eran 6-8 llamadas a GAS (~12s). Ahora 1 (~3-4s).
+    const resp = await AdminAPI.dashboardCompleto();
 
     if (!resp.ok) {
       AdminUI.setLoading(false);
-      // Si el JWT venció, volver al login
       if (resp.error && (resp.error.includes('Sesión') || resp.error.includes('Token'))) {
         cerrarSesionForzado();
         return;
@@ -278,61 +280,39 @@ const AdminApp = (function() {
       return;
     }
 
-    state.estructura = resp;
+    // La estructura viene anidada en resp.estructura
+    const estructura = resp.estructura || {};
+    state.estructura = estructura;
 
-    // ¿El usuario es admin del sistema? → mostrar el botón "⚙ Sistema"
-    detectarAdminSistema();
+    // es_admin viene en la misma respuesta → mostramos el botón sin otra llamada
+    state.esAdmin = !!resp.es_admin;
+    const btnSis = document.getElementById('btn-panel-sistema');
+    if (btnSis) btnSis.style.display = state.esAdmin ? 'inline-flex' : 'none';
 
-    // Cargar cartas+locales enriquecidos por empresa (en paralelo)
-    // Esto nos da: carta_activa con nombre, URL pública, cartas_disponibles
-    const empresas = resp.empresas || [];
+    // Cartas y publicaciones ya vienen por empresa en resp.por_empresa
+    const empresas = estructura.empresas || [];
     state.cartasPorEmpresa = {};
     state.publicacionesPorEmpresa = {};
-    state.cartasCatalogoPorEmpresa = {};  // A2.2: catálogo "lista para publicar"
+    state.cartasCatalogoPorEmpresa = {};
 
-    if (empresas.length > 0) {
-      // 2 calls por empresa en paralelo:
-      //   - localListarConCarta: para "Cambiar carta default" (lógica vieja)
-      //   - publicacionListar:   para mostrar TODAS las publicaciones (modelo D)
-      //                          y el catálogo de cartas "lista para publicar" (A2.2)
-      const promesasCartas = empresas.map(function(e) {
-        return AdminAPI.localListarConCarta(e.Id_Empresa);
-      });
-      const promesasPubs = empresas.map(function(e) {
-        return AdminAPI.publicacionListar(e.Id_Empresa);
-      });
-
-      const [resultadosCartas, resultadosPubs] = await Promise.all([
-        Promise.all(promesasCartas),
-        Promise.all(promesasPubs)
-      ]);
-
-      empresas.forEach(function(e, idx) {
-        const r = resultadosCartas[idx];
-        if (r && r.ok) {
-          state.cartasPorEmpresa[e.Id_Empresa] = {
-            locales: r.locales || [],
-            cartas_disponibles: r.cartas_disponibles || []
-          };
-        }
-        const rp = resultadosPubs[idx];
-        if (rp && rp.ok) {
-          // Indexar publicaciones por Id_Local para lookup rápido
-          const porLocal = {};
-          (rp.publicaciones || []).forEach(function(pub) {
-            if (!porLocal[pub.Id_Local]) porLocal[pub.Id_Local] = [];
-            porLocal[pub.Id_Local].push(pub);
-          });
-          state.publicacionesPorEmpresa[e.Id_Empresa] = porLocal;
-          // Catálogo standby (cartas Estado='activa' con flag esta_publicada)
-          state.cartasCatalogoPorEmpresa[e.Id_Empresa] = rp.cartas_catalogo || [];
-        }
-      });
-    }
+    const porEmpresa = resp.por_empresa || {};
+    empresas.forEach(function(e) {
+      const bloque = porEmpresa[e.Id_Empresa] || {};
+      if (bloque.cartas) {
+        state.cartasPorEmpresa[e.Id_Empresa] = {
+          locales: bloque.cartas.locales || [],
+          cartas_disponibles: bloque.cartas.cartas_disponibles || []
+        };
+      }
+      if (bloque.publicaciones) {
+        state.publicacionesPorEmpresa[e.Id_Empresa] = bloque.publicaciones.por_local || {};
+        state.cartasCatalogoPorEmpresa[e.Id_Empresa] = bloque.publicaciones.cartas_catalogo || [];
+      }
+    });
 
     AdminUI.setLoading(false);
 
-    // Si el usuario no tiene empresas todavía → pantalla de bienvenida con 4 pasos
+    // Si el usuario no tiene empresas todavía → pantalla de bienvenida
     if (empresas.length === 0) {
       const nombreUsuario = state.nombreNuevo
         || (state.usuarioLogueado && state.usuarioLogueado.nombre)
