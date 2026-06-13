@@ -240,7 +240,7 @@ const AdminApp = (function() {
   async function cerrarSesion() {
     const confirmar = await AdminUI.confirm({
       title: '¿Cerrar sesión?',
-      message: 'Volverás al selector para elegir otra empresa o salir definitivamente.',
+      message: 'Vas a salir de GranCarta. Para volver a entrar tendrás que ingresar de nuevo.',
       okLabel: 'Cerrar sesión',
       cancelLabel: 'Cancelar'
     });
@@ -251,16 +251,46 @@ const AdminApp = (function() {
       await AdminAPI.cerrarSesion();
     } catch (e) {}
 
-    // Limpiar el contexto del admin pero NO el del app
-    // (el usuario sigue logueado a nivel cuenta, vuelve al selector)
+    // LOGOUT REAL (13/6): borra TODO el contexto, también el de la puerta
+    // (app_jwt/app_mail), para que "cerrar sesión" SALGA de verdad y NO
+    // deje al usuario en el selector. Una acción: salís.
     localStorage.removeItem('admin_jwt');
     localStorage.removeItem('admin_mail');
+    localStorage.removeItem('app_jwt');
+    localStorage.removeItem('app_mail');
     state.jwt = null;
     state.mail = null;
     state.estructura = null;
     AdminUI.setLoading(false);
 
-    // Redirigir al selector de ámbitos
+    // Afuera de la app: a la landing pública (NO al login/2FA, NO al selector)
+    window.location.href = 'https://grancarta.com';
+  }
+
+  // VOLVER A EMPRESAS (13/6): "un paso atrás" para cambiar de empresa.
+  // Mantiene la sesión (NO borra app_jwt) y vuelve al selector de la puerta.
+  // Si el usuario tiene UNA sola empresa, no hay a dónde cambiar → modal polite.
+  async function volverAEmpresas() {
+    const empresas = (state.estructura && state.estructura.empresas) || [];
+
+    if (empresas.length <= 1) {
+      const salir = await AdminUI.confirm({
+        title: 'Tenés una sola empresa',
+        message: 'Por ahora estás trabajando en tu única empresa, así que no hay otra a la cual cambiar. Si querés, podés cerrar sesión.',
+        okLabel: 'Cerrar sesión',
+        cancelLabel: 'Seguir acá'
+      });
+      if (salir) {
+        cerrarSesion();
+      }
+      return;
+    }
+
+    // Tiene varias: vuelve al selector SIN cerrar sesión (mantiene app_jwt).
+    // Limpiamos solo el contexto del admin para que la próxima entrada
+    // tome el ámbito nuevo limpio.
+    localStorage.removeItem('admin_jwt');
+    localStorage.removeItem('admin_mail');
     window.location.href = 'https://app.grancarta.com';
   }
 
@@ -3064,6 +3094,7 @@ const AdminApp = (function() {
     confirmarRegistro,
     volverALoginMail,
     cerrarSesion,
+    volverAEmpresas,
     iniciarWizardEmpresa,
     iniciarWizardLocal,
     abrirEmpresa,
@@ -3142,6 +3173,7 @@ function mostrarFormRegistro() { AdminApp.mostrarFormRegistro(); }
 function confirmarRegistro(e) { AdminApp.confirmarRegistro(e); }
 function volverALoginMail() { AdminApp.volverALoginMail(); }
 function cerrarSesion() { AdminApp.cerrarSesion(); }
+function volverAEmpresas() { AdminApp.volverAEmpresas(); }
 function iniciarWizardEmpresa() { AdminApp.iniciarWizardEmpresa(); }
 function abrirEmpresa(idEmpresa) { AdminApp.abrirEmpresa(idEmpresa); }
 function cancelarWizard() { Wizard.cancel(); }
