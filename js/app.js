@@ -465,7 +465,8 @@ const AdminApp = (function() {
       if (localesDeEmpresa.length === 0) {
         html += `
           <div class="empresa-block-empty">
-            <span>📍 Sin locales todavía</span>
+            <span>📍 Todavía no tenés sucursales.</span>
+            <button class="btn btn-primary btn-sm" onclick="nuevaSucursal('${e.Id_Empresa}')">+ Crear la primera sucursal</button>
           </div>
         `;
       } else {
@@ -2535,6 +2536,21 @@ const AdminApp = (function() {
   // WIZARD DE LOCAL
   // ============================================================
 
+  // Abre el alta de sucursal para la empresa indicada (o la activa).
+  // Reusa iniciarWizardLocal, que ya existe y está probado (es el mismo
+  // que corre al crear la primera sucursal tras dar de alta una empresa).
+  function nuevaSucursal(idEmpresa) {
+    const empresas = state.estructura.empresas || [];
+    const id = idEmpresa || state.idEmpresaActiva;
+    let emp = id ? empresas.find(function(e) { return e.Id_Empresa === id; }) : null;
+    if (!emp) emp = empresas[0] || null;
+    if (!emp) {
+      AdminUI.toast('No encontramos la empresa', 'error');
+      return;
+    }
+    iniciarWizardLocal({ id_empresa: emp.Id_Empresa, nombreEmpresa: emp.Nombre_Comercial });
+  }
+
   /**
    * Inicia el wizard de Local.
    *
@@ -3106,6 +3122,7 @@ const AdminApp = (function() {
     volverAEmpresas,
     iniciarWizardEmpresa,
     iniciarWizardLocal,
+    nuevaSucursal,
     abrirEmpresa,
     volverADashboard,
     abrirCartasDelLocal,
@@ -3184,6 +3201,7 @@ function volverALoginMail() { AdminApp.volverALoginMail(); }
 function cerrarSesion() { AdminApp.cerrarSesion(); }
 function volverAEmpresas() { AdminApp.volverAEmpresas(); }
 function iniciarWizardEmpresa() { AdminApp.iniciarWizardEmpresa(); }
+function nuevaSucursal(idEmpresa) { AdminApp.nuevaSucursal(idEmpresa); }
 function abrirEmpresa(idEmpresa) { AdminApp.abrirEmpresa(idEmpresa); }
 function cancelarWizard() { Wizard.cancel(); }
 
