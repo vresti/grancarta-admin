@@ -2574,8 +2574,8 @@ const AdminApp = (function() {
         {
           type: 'welcome',
           icon: '📍',
-          title: 'Configuremos tu primer local',
-          subtitle: 'Ahora vamos a cargar la dirección física de ' + nombreEmpresa + '. Solo el nombre es obligatorio — el resto lo podés saltar y completar después.'
+          title: 'Datos de la sucursal',
+          subtitle: 'Cargá los datos de la sucursal de ' + nombreEmpresa + '. Son todos necesarios para que tus clientes la encuentren y puedan contactarte — se completan una sola vez.'
         },
         {
           type: 'input',
@@ -2589,55 +2589,54 @@ const AdminApp = (function() {
         },
         {
           type: 'input',
-          eyebrow: 'Paso 2 de 6 · Opcional',
+          eyebrow: 'Paso 2 de 6',
           title: '¿Dónde queda?',
           subtitle: 'La dirección de la calle (sin ciudad, eso viene después).',
           field: 'direccion',
           placeholder: 'Av. Corrientes 1234',
-          optional: true
+          validate: function(d) { return AdminUI.validar.no_vacio(d.direccion); }
         },
         {
           type: 'input',
-          eyebrow: 'Paso 3 de 6 · Opcional',
+          eyebrow: 'Paso 3 de 6',
           title: 'Ciudad',
           subtitle: '¿En qué ciudad está tu local?',
           field: 'ciudad',
           placeholder: 'Buenos Aires',
-          optional: true
+          validate: function(d) { return AdminUI.validar.no_vacio(d.ciudad); }
         },
         {
           type: 'input',
-          eyebrow: 'Paso 4 de 6 · Opcional',
+          eyebrow: 'Paso 4 de 6',
           title: 'Provincia',
           subtitle: '¿Y la provincia?',
           field: 'provincia',
           placeholder: 'CABA',
-          optional: true
+          validate: function(d) { return AdminUI.validar.no_vacio(d.provincia); }
         },
         {
           type: 'input',
-          eyebrow: 'Paso 5 de 6 · Opcional',
+          eyebrow: 'Paso 5 de 6',
           title: 'Teléfono del local',
-          subtitle: 'Por si querés que tu cliente pueda llamar al local desde la carta digital.',
+          subtitle: 'Para que tu cliente pueda llamar al local desde la carta digital.',
           field: 'telefono',
           placeholder: '+54 11 4567 8900',
           inputType: 'tel',
-          optional: true,
-          hint: 'Lo podés cambiar o agregar después desde el panel.'
+          validate: function(d) { return AdminUI.validar.no_vacio(d.telefono) && AdminUI.validar.telefono(d.telefono); }
         },
         {
           type: 'input',
-          eyebrow: 'Paso 6 de 6 · Opcional',
+          eyebrow: 'Paso 6 de 6',
           title: 'Mail del local',
-          subtitle: 'Si el local tiene un mail propio (distinto al de la empresa).',
+          subtitle: 'El mail de contacto de esta sucursal.',
           field: 'mail',
           placeholder: 'centro@lacantina.com',
           inputType: 'email',
-          optional: true,
+          validate: function(d) { return AdminUI.validar.mail(d.mail); },
           validationMessage: function(d, valid) {
             if (!d.mail) return { text: '' };
             if (AdminUI.validar.mail(d.mail)) return { text: '✓ Mail válido', type: 'success' };
-            return { text: '' };
+            return { text: 'Ingresá un mail válido', type: 'error' };
           }
         },
         {
@@ -2654,7 +2653,12 @@ const AdminApp = (function() {
             { label: 'Mail', field: 'mail' }
           ],
           validate: function(d) {
-            return AdminUI.validar.longitudMinima(d.nombre, 2);
+            return AdminUI.validar.no_vacio(d.nombre)
+              && AdminUI.validar.no_vacio(d.direccion)
+              && AdminUI.validar.no_vacio(d.ciudad)
+              && AdminUI.validar.no_vacio(d.provincia)
+              && AdminUI.validar.no_vacio(d.telefono)
+              && AdminUI.validar.mail(d.mail);
           }
         },
         {
