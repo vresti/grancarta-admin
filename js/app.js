@@ -67,8 +67,11 @@ const AdminApp = (function() {
 
       await cargarDashboard();
     } else {
-      // PUERTA ÚNICA: admin NO tiene login propio. Sin token → a la puerta (app).
-      window.location.replace('https://app.grancarta.com');
+      // PUERTA ÚNICA: admin NO tiene login propio.
+      // Sin token = ya no tenés sesión acá. Por la regla del logout voluntario,
+      // vas al LANDING (no al login). El caso "sesión vencida en pleno uso" lo
+      // agarra antes cerrarSesionForzado (que sí va al login para re-entrar).
+      window.location.replace('https://grancarta.com');
     }
   }
 
@@ -3297,3 +3300,19 @@ if (document.readyState === 'loading') {
 } else {
   AdminApp.init();
 }
+
+// ============================================================
+// GUARDIA DE LA FLECHA-ATRÁS (seguridad, 14/6)
+// ============================================================
+// La flecha-atrás del navegador puede restaurar el admin desde su caché
+// (bfcache) SIN re-ejecutar init: mostraría el dashboard viejo con datos a la
+// vista, aunque ya hayas cerrado sesión. El evento 'pageshow' con
+// event.persisted === true nos avisa de esa restauración. Si en ese momento
+// no hay sesión, salimos al landing ANTES de mostrar nada (regla del logout
+// voluntario: te fuiste → landing). Solo actúa sin sesión: nunca molesta a un
+// usuario logueado.
+window.addEventListener('pageshow', function(event) {
+  if (event.persisted && !localStorage.getItem('admin_jwt')) {
+    window.location.replace('https://grancarta.com');
+  }
+});
