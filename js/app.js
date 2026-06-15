@@ -1989,19 +1989,19 @@ const AdminApp = (function() {
             return '<button type="button"' +
               ' onclick="toggleDisponible(\'' + p.Id_Producto + '\',\'' + val + '\')"' +
               ' title="' + label + '"' +
-              ' style="flex:1;border:none;cursor:pointer;padding:6px 2px;' +
-              'font-size:10px;font-weight:700;letter-spacing:.02em;line-height:1;' +
+              ' style="flex:1 0 auto;border:none;cursor:pointer;padding:7px 10px;' +
+              'font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1;white-space:nowrap;' +
               'background:' + (on ? colOn : 'transparent') + ';' +
               'color:' + (on ? '#fff' : '#9ca3af') + ';' +
               'transition:background .12s,color .12s;">' + label + '</button>';
           };
           const segHtml =
-            '<div style="display:flex;width:118px;border:1px solid #374151;' +
-            'border-radius:7px;overflow:hidden;background:#111827;">' +
+            '<div style="display:inline-flex;margin-right:14px;border:1px solid #374151;' +
+            'border-radius:8px;overflow:hidden;background:#111827;">' +
               _segBtn('visible', 'Visible', '#16a34a') +
-              '<span style="width:1px;background:#374151;"></span>' +
+              '<span style="width:1px;background:#374151;flex:0 0 auto;"></span>' +
               _segBtn('agotado', 'Agotado', '#d97706') +
-              '<span style="width:1px;background:#374151;"></span>' +
+              '<span style="width:1px;background:#374151;flex:0 0 auto;"></span>' +
               _segBtn('oculto', 'Oculto', '#6b7280') +
             '</div>';
 
