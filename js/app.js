@@ -1964,7 +1964,10 @@ const AdminApp = (function() {
         sec.productos.forEach(function(p, pIdx) {
           const esPrimP = pIdx === 0;
           const esUltimP = pIdx === sec.productos.length - 1;
-          const disponible = p.Disponible_Hoy;
+          // v1.5: estado de visibilidad de 3 valores ('visible'|'agotado'|'oculto').
+          // Fallback al booleano viejo por si una fila no trae el campo nuevo.
+          const estadoVis = p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto');
+          const disponible = estadoVis === 'visible';
 
           // Flags y alergenos
           const flags = [];
@@ -1978,14 +1981,34 @@ const AdminApp = (function() {
           }
           const flagsHtml = flags.length > 0 ? '<span class="producto-flags">' + flags.join(' ') + '</span>' : '';
 
+          // v1.5: control de 3 estados (semáforo). Siempre uno activo.
+          // verde=visible, ámbar=agotado, gris=oculto. Estilos inline para que
+          // funcione sin depender de CSS nuevo.
+          const _segBtn = function(val, label, colOn) {
+            const on = estadoVis === val;
+            return '<button type="button"' +
+              ' onclick="toggleDisponible(\'' + p.Id_Producto + '\',\'' + val + '\')"' +
+              ' title="' + label + '"' +
+              ' style="flex:1;border:none;cursor:pointer;padding:6px 2px;' +
+              'font-size:10px;font-weight:700;letter-spacing:.02em;line-height:1;' +
+              'background:' + (on ? colOn : 'transparent') + ';' +
+              'color:' + (on ? '#fff' : '#9ca3af') + ';' +
+              'transition:background .12s,color .12s;">' + label + '</button>';
+          };
+          const segHtml =
+            '<div style="display:flex;width:118px;border:1px solid #374151;' +
+            'border-radius:7px;overflow:hidden;background:#111827;">' +
+              _segBtn('visible', 'Visible', '#16a34a') +
+              '<span style="width:1px;background:#374151;"></span>' +
+              _segBtn('agotado', 'Agotado', '#d97706') +
+              '<span style="width:1px;background:#374151;"></span>' +
+              _segBtn('oculto', 'Oculto', '#6b7280') +
+            '</div>';
+
           html += `
             <div class="producto-row ${disponible ? '' : 'is-unavailable'}">
               <div class="producto-toggle">
-                <label class="toggle-disponible" title="${disponible ? 'Disponible hoy' : 'Agotado'}">
-                  <input type="checkbox" ${disponible ? 'checked' : ''}
-                         onchange="toggleDisponible('${p.Id_Producto}', this.checked)">
-                  <span class="toggle-slider"></span>
-                </label>
+                ${segHtml}
               </div>
               <div class="producto-info">
                 <div class="producto-nombre">${AdminUI.escapeHtml(p.Nombre)}</div>
@@ -2291,11 +2314,13 @@ const AdminApp = (function() {
     await recargarEditor();
   }
 
-  async function toggleDisponible(idProducto, disponible) {
-    const resp = await AdminAPI.productoToggleDisponible(idProducto, disponible);
+  // v1.5: ahora recibe un ESTADO de 3 valores ('visible'|'agotado'|'oculto'),
+  // no un booleano. Lo manda el control de 3 botones (semáforo).
+  async function toggleDisponible(idProducto, estado) {
+    const resp = await AdminAPI.productoToggleDisponible(idProducto, estado);
     if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cambiar la disponibilidad', 'error');
-      // Revertir el checkbox visualmente
+      AdminUI.toast(resp.error || 'No pudimos cambiar la visibilidad', 'error');
+      // Revertir visualmente recargando desde el backend
       await recargarEditor();
       return;
     }
@@ -2303,14 +2328,18 @@ const AdminApp = (function() {
     state.editorContexto.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
         if (p.Id_Producto === idProducto) {
+          p.Estado_Visibilidad = resp.estado_visibilidad;
           p.Disponible_Hoy = resp.disponible_hoy;
         }
       });
     });
-    // Actualizar stats sin recargar todo
+    // Actualizar stats: "disponibles hoy" = SOLO los visible
     let disponibles = 0;
     state.editorContexto.secciones.forEach(function(s) {
-      s.productos.forEach(function(p) { if (p.Disponible_Hoy) disponibles++; });
+      s.productos.forEach(function(p) {
+        const ev = p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto');
+        if (ev === 'visible') disponibles++;
+      });
     });
     state.editorContexto.stats.productos_disponibles = disponibles;
     renderEditor();
@@ -3258,7 +3287,7 @@ function abrirModalProductoNuevo(idSeccion) { AdminApp.abrirModalProductoNuevo(i
 function abrirModalProductoEditar(id) { AdminApp.abrirModalProductoEditar(id); }
 function confirmarProducto() { AdminApp.confirmarProducto(); }
 function ordenarProducto(id, dir) { AdminApp.ordenarProducto(id, dir); }
-function toggleDisponible(id, disponible) { AdminApp.toggleDisponible(id, disponible); }
+function toggleDisponible(id, estado) { AdminApp.toggleDisponible(id, estado); }
 function eliminarProducto(id, nombre) { AdminApp.eliminarProducto(id, nombre); }
 
 // Vista previa

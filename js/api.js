@@ -265,10 +265,12 @@ const AdminAPI = (function() {
       });
     },
 
-    productoToggleDisponible(idProducto, disponible) {
+    productoToggleDisponible(idProducto, estado) {
+      // v1.5: manda el estado de 3 valores ('visible'|'agotado'|'oculto').
+      // El backend también acepta el viejo {disponible:bool} por compatibilidad.
       return llamar('producto_toggle_disponible', {
         id_producto: idProducto,
-        disponible: disponible
+        estado: estado
       });
     },
 
