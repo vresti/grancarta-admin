@@ -265,12 +265,10 @@ const AdminAPI = (function() {
       });
     },
 
-    productoToggleDisponible(idProducto, estado) {
-      // v1.5: manda el estado de 3 valores ('visible'|'agotado'|'oculto').
-      // El backend también acepta el viejo {disponible:bool} por compatibilidad.
+    productoToggleDisponible(idProducto, disponible) {
       return llamar('producto_toggle_disponible', {
         id_producto: idProducto,
-        estado: estado
+        disponible: disponible
       });
     },
 
@@ -332,6 +330,78 @@ const AdminAPI = (function() {
         mail: mail,
         nombre: nombre || '',
         apellido: apellido || ''
+      });
+    },
+
+    // ---- Sectores y Mesas (Script 13 — 16/6/2026) ----
+
+    /**
+     * Lista los sectores de un local, enriquecidos con su canal/carta y la
+     * cantidad de mesas. Con incluir_mesas=true trae también el detalle.
+     */
+    sectorListar(idLocal, incluirMesas) {
+      return llamar('sector_listar', {
+        id_local: idLocal,
+        incluir_mesas: !!incluirMesas
+      });
+    },
+
+    /**
+     * Crea un sector dentro de un canal (audience_slug), con su primera mesa.
+     */
+    sectorCrear(idLocal, nombre, audienceSlug, colorHex) {
+      return llamar('sector_crear', {
+        id_local: idLocal,
+        nombre: nombre,
+        audience_slug: audienceSlug || '',
+        color_hex: colorHex || ''
+      });
+    },
+
+    sectorActualizar(idSector, cambios) {
+      return llamar('sector_actualizar', Object.assign({ id_sector: idSector }, cambios || {}));
+    },
+
+    sectorEliminar(idSector) {
+      return llamar('sector_eliminar', { id_sector: idSector });
+    },
+
+    /**
+     * Lista las mesas de un sector (o de un local entero).
+     */
+    mesaListar(idSector, idLocal) {
+      const p = {};
+      if (idSector) p.id_sector = idSector;
+      if (idLocal) p.id_local = idLocal;
+      return llamar('mesa_listar', p);
+    },
+
+    mesaCrear(idSector, numero, nombreVisible, capacidad) {
+      return llamar('mesa_crear', {
+        id_sector: idSector,
+        numero: numero || '',
+        nombre_visible: nombreVisible || '',
+        capacidad: capacidad || ''
+      });
+    },
+
+    mesaActualizar(idMesa, cambios) {
+      return llamar('mesa_actualizar', Object.assign({ id_mesa: idMesa }, cambios || {}));
+    },
+
+    mesaEliminar(idMesa) {
+      return llamar('mesa_eliminar', { id_mesa: idMesa });
+    },
+
+    // ---- Nombre de canal (Script 10 v2.1 — 16/6/2026) ----
+
+    /**
+     * Renombra un canal (publicación). El front lo muestra como "Espacio "+nombre.
+     */
+    publicacionRenombrarCanal(idPublicacion, nombreCanal) {
+      return llamar('publicacion_actualizar', {
+        id_publicacion: idPublicacion,
+        nombre_canal: nombreCanal
       });
     }
   };

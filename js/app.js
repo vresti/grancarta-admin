@@ -598,6 +598,12 @@ const AdminApp = (function() {
               </div>
             ` : ''}
             ${bloqueSwapHtml}
+            <div class="publicacion-sectores-row" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06);">
+              <button class="btn btn-secondary btn-sm"
+                      onclick="abrirSectoresMesas('${AdminUI.escapeHtml(l.Id_Local)}','${AdminUI.escapeHtml(audienceSlug)}','${AdminUI.escapeHtml(pub.Nombre_Canal || '')}','${AdminUI.escapeHtml(l.Nombre || '')}','${AdminUI.escapeHtml(nombreEmpresa)}')">
+                🪑 Sectores y mesas
+              </button>
+            </div>
           </div>
         `;
       }).join('');
@@ -1459,6 +1465,180 @@ const AdminApp = (function() {
   // ============================================================
   // CARTAS DEL LOCAL
   // ============================================================
+
+  // ============================================================
+  // SECTORES Y MESAS — pantalla por canal (B1: ver y navegar)
+  // 16/6/2026. La pantalla se crea al vuelo (no está en index.html).
+  // ============================================================
+
+  /**
+   * Deriva el nombre visible del canal desde el audience_slug, como fallback
+   * si el backend no mandó Nombre_Canal (misma lógica que el Script 10).
+   *   '' → 'Principal' · 'delivery' → 'Delivery' · 'a-b' → 'A b'
+   */
+  function _nombreCanalDesdeSlug(slug) {
+    const s = String(slug || '').trim().toLowerCase();
+    if (s === '') return 'Principal';
+    const conEsp = s.replace(/-/g, ' ');
+    return conEsp.charAt(0).toUpperCase() + conEsp.slice(1);
+  }
+
+  /**
+   * Garantiza que exista la pantalla screen-sectores-mesas en el DOM.
+   * Como vamos por "panel autocontenido en JS" (no tocamos index.html), la
+   * creamos la primera vez que se abre y después la reusamos.
+   */
+  function _asegurarPantallaSectores() {
+    let screen = document.getElementById('screen-sectores-mesas');
+    if (screen) return screen;
+
+    screen = document.createElement('div');
+    screen.id = 'screen-sectores-mesas';
+    screen.className = 'screen';
+    screen.style.display = 'none';
+    screen.innerHTML = `
+      <div class="screen-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px;">
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="volverDeSectores()" style="margin-bottom:10px;">← Volver</button>
+          <nav id="sectores-breadcrumb" style="font-size:13px;color:#9ca3af;display:flex;flex-wrap:wrap;gap:6px;align-items:center;"></nav>
+          <h2 id="sectores-titulo" style="margin:6px 0 0;font-size:20px;color:#fff;"></h2>
+        </div>
+      </div>
+      <div class="screen-body" style="padding:0 20px 40px;">
+        <div id="sectores-stats" style="color:#9ca3af;font-size:13px;margin-bottom:14px;"></div>
+        <div id="sectores-list"></div>
+      </div>
+    `;
+
+    // Montar dentro del contenedor principal de la app (al lado de las otras screens)
+    const refScreen = document.getElementById('screen-cartas') || document.getElementById('screen-dashboard');
+    if (refScreen && refScreen.parentNode) {
+      refScreen.parentNode.appendChild(screen);
+    } else {
+      document.body.appendChild(screen);
+    }
+    return screen;
+  }
+
+  /**
+   * Abre la pantalla de sectores y mesas de un canal concreto.
+   * Llamada desde el botón "🪑 Sectores y mesas" de cada publicacion-card.
+   */
+  async function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa) {
+    const nombreCanalFinal = (nombreCanal && nombreCanal.trim() !== '')
+      ? nombreCanal.trim()
+      : _nombreCanalDesdeSlug(audienceSlug);
+
+    state.sectoresContexto = {
+      idLocal: idLocal,
+      audienceSlug: audienceSlug || '',
+      nombreCanal: nombreCanalFinal,
+      nombreLocal: nombreLocal || '',
+      nombreEmpresa: nombreEmpresa || '',
+      sectores: []
+    };
+
+    _asegurarPantallaSectores();
+
+    // Breadcrumb: Empresa → Local → Espacio X
+    const bc = document.getElementById('sectores-breadcrumb');
+    bc.innerHTML =
+      '<span>' + AdminUI.escapeHtml(nombreEmpresa || '') + '</span>' +
+      '<span style="opacity:.5;">→</span>' +
+      '<span>' + AdminUI.escapeHtml(nombreLocal || '') + '</span>' +
+      '<span style="opacity:.5;">→</span>' +
+      '<span style="color:#c4b5fd;font-weight:600;">Espacio ' + AdminUI.escapeHtml(nombreCanalFinal) + '</span>';
+
+    document.getElementById('sectores-titulo').textContent = '🪑 Sectores y mesas';
+
+    AdminUI.mostrarPantalla('screen-sectores-mesas');
+    await cargarSectores();
+  }
+
+  async function cargarSectores() {
+    const ctx = state.sectoresContexto;
+    if (!ctx) return;
+
+    AdminUI.setLoading(true);
+    const resp = await AdminAPI.sectorListar(ctx.idLocal, true); // incluir_mesas
+    AdminUI.setLoading(false);
+
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos cargar los sectores', 'error');
+      return;
+    }
+
+    // Filtrar SOLO los sectores de ESTE canal (audience_slug del contexto).
+    // El backend devuelve todos los del local; acá nos quedamos con los del canal.
+    const todos = resp.sectores || [];
+    ctx.sectores = todos.filter(function(s) {
+      return (s.Audience_Slug || '') === ctx.audienceSlug;
+    });
+    renderSectores();
+  }
+
+  function renderSectores() {
+    const ctx = state.sectoresContexto;
+    const cont = document.getElementById('sectores-list');
+    const stats = document.getElementById('sectores-stats');
+    const sectores = ctx.sectores || [];
+
+    const totalMesas = sectores.reduce(function(t, s) { return t + (s.cantidad_mesas || 0); }, 0);
+    stats.textContent = sectores.length + ' sector(es) · ' + totalMesas + ' mesa(s) en este canal';
+
+    if (sectores.length === 0) {
+      cont.innerHTML = `
+        <div class="empty-state" style="text-align:center;padding:40px 20px;">
+          <div class="empty-state-icon" style="font-size:40px;">🪑</div>
+          <div class="empty-state-title" style="font-size:17px;margin-top:8px;">Todavía no hay sectores en este canal</div>
+          <div class="empty-state-detail" style="color:#9ca3af;margin-top:6px;">
+            Un sector es una ubicación física (Piso 1, Vereda, Barra...). Cada sector tiene sus mesas con QR.
+            <br><small>El alta de sectores y mesas llega en la próxima tanda.</small>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    sectores.forEach(function(s) {
+      const color = s.Color_Hex || '#1B2B4A';
+      const mesas = s.mesas || [];
+
+      const mesasHtml = mesas.length > 0
+        ? mesas.map(function(m) {
+            return `
+              <div class="mesa-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid rgba(255,255,255,.05);">
+                <span style="font-weight:600;color:#fff;min-width:70px;">Mesa ${AdminUI.escapeHtml(String(m.Numero))}</span>
+                <span style="color:#9ca3af;flex:1;">${AdminUI.escapeHtml(m.Nombre_Visible || '')}</span>
+                ${m.Capacidad ? '<span style="color:#6b7280;font-size:12px;">👥 ' + AdminUI.escapeHtml(String(m.Capacidad)) + '</span>' : ''}
+                <code style="font-size:11px;color:#6b7280;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:4px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${AdminUI.escapeHtml(m.Url_Completa_QR || '')}</code>
+              </div>
+            `;
+          }).join('')
+        : '<div style="padding:8px 12px;color:#6b7280;font-size:13px;">Sin mesas</div>';
+
+      html += `
+        <div class="sector-card" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:14px;overflow:hidden;">
+          <div class="sector-card-header" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-left:4px solid ${color};">
+            <span style="font-size:16px;font-weight:700;color:#fff;">${AdminUI.escapeHtml(s.Nombre)}</span>
+            <span style="color:#9ca3af;font-size:13px;">${s.cantidad_mesas || 0} mesa(s)</span>
+            ${s.canal_existe === false ? '<span style="color:#f59e0b;font-size:12px;">⚠ canal despublicado</span>' : ''}
+          </div>
+          <div class="sector-card-mesas">
+            ${mesasHtml}
+          </div>
+        </div>
+      `;
+    });
+
+    cont.innerHTML = html;
+  }
+
+  function volverDeSectores() {
+    AdminUI.mostrarPantalla('screen-dashboard');
+    state.sectoresContexto = null;
+  }
 
   async function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
     state.cartasContexto = {
@@ -3219,7 +3399,10 @@ const AdminApp = (function() {
     ejecutarIntegridad,
     abrirModalAgregarAdmin,
     cerrarModalAdmin,
-    guardarAdmin
+    guardarAdmin,
+    // Sectores y Mesas (16/6)
+    abrirSectoresMesas,
+    volverDeSectores
   };
 
 })();
@@ -3319,6 +3502,12 @@ function ejecutarIntegridad() { AdminApp.ejecutarIntegridad(); }
 function abrirModalAgregarAdmin() { AdminApp.abrirModalAgregarAdmin(); }
 function cerrarModalAdmin() { AdminApp.cerrarModalAdmin(); }
 function guardarAdmin() { AdminApp.guardarAdmin(); }
+
+// Sectores y Mesas (16/6)
+function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa) {
+  AdminApp.abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa);
+}
+function volverDeSectores() { AdminApp.volverDeSectores(); }
 
 
 // ============================================================
