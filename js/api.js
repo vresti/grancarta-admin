@@ -348,13 +348,17 @@ const AdminAPI = (function() {
 
     /**
      * Crea un sector dentro de un canal (audience_slug), con su primera mesa.
+     * La primera mesa lleva un identificador alfanumérico (mesaNumero, obligatorio)
+     * y una capacidad opcional.
      */
-    sectorCrear(idLocal, nombre, audienceSlug, colorHex) {
+    sectorCrear(idLocal, nombre, audienceSlug, colorHex, mesaNumero, mesaCapacidad) {
       return llamar('sector_crear', {
         id_local: idLocal,
         nombre: nombre,
         audience_slug: audienceSlug || '',
-        color_hex: colorHex || ''
+        color_hex: colorHex || '',
+        mesa_numero: mesaNumero || '',
+        mesa_capacidad: mesaCapacidad || ''
       });
     },
 

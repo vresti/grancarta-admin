@@ -1585,33 +1585,44 @@ const AdminApp = (function() {
     const totalMesas = sectores.reduce(function(t, s) { return t + (s.cantidad_mesas || 0); }, 0);
     stats.textContent = sectores.length + ' sector(es) · ' + totalMesas + ' mesa(s) en este canal';
 
+    // Botón "+ Nuevo sector" (siempre visible arriba de la lista)
+    const btnNuevoSector =
+      '<div style="margin-bottom:16px;">' +
+        '<button class="btn btn-primary" onclick="abrirModalNuevoSector()">+ Nuevo sector</button>' +
+      '</div>';
+
     if (sectores.length === 0) {
-      cont.innerHTML = `
+      cont.innerHTML = btnNuevoSector + `
         <div class="empty-state" style="text-align:center;padding:40px 20px;">
           <div class="empty-state-icon" style="font-size:40px;">🪑</div>
           <div class="empty-state-title" style="font-size:17px;margin-top:8px;">Todavía no hay sectores en este canal</div>
           <div class="empty-state-detail" style="color:#9ca3af;margin-top:6px;">
             Un sector es una ubicación física (Piso 1, Vereda, Barra...). Cada sector tiene sus mesas con QR.
-            <br><small>El alta de sectores y mesas llega en la próxima tanda.</small>
+            <br><small>Tocá "+ Nuevo sector" para crear el primero.</small>
           </div>
         </div>
       `;
       return;
     }
 
-    let html = '';
+    let html = btnNuevoSector;
     sectores.forEach(function(s) {
       const color = s.Color_Hex || '#1B2B4A';
       const mesas = s.mesas || [];
+      const idSectorJs = AdminUI.escapeHtml(s.Id_Sector);
+      const nombreSectorJs = AdminUI.escapeHtml(s.Nombre).replace(/'/g, "\\'");
 
       const mesasHtml = mesas.length > 0
         ? mesas.map(function(m) {
+            const idMesaJs = AdminUI.escapeHtml(m.Id_Mesa);
+            const numMesaJs = AdminUI.escapeHtml(String(m.Numero)).replace(/'/g, "\\'");
             return `
               <div class="mesa-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid rgba(255,255,255,.05);">
-                <span style="font-weight:600;color:#fff;min-width:70px;">Mesa ${AdminUI.escapeHtml(String(m.Numero))}</span>
+                <span style="font-weight:600;color:#fff;min-width:90px;">${AdminUI.escapeHtml(String(m.Numero))}</span>
                 <span style="color:#9ca3af;flex:1;">${AdminUI.escapeHtml(m.Nombre_Visible || '')}</span>
                 ${m.Capacidad ? '<span style="color:#6b7280;font-size:12px;">👥 ' + AdminUI.escapeHtml(String(m.Capacidad)) + '</span>' : ''}
-                <code style="font-size:11px;color:#6b7280;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:4px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${AdminUI.escapeHtml(m.Url_Completa_QR || '')}</code>
+                <code style="font-size:11px;color:#6b7280;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:4px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${AdminUI.escapeHtml(m.Url_Completa_QR || '')}</code>
+                <button class="btn-icon-mini" title="Eliminar mesa" onclick="eliminarMesa('${idMesaJs}','${numMesaJs}')" style="color:#f87171;">🗑</button>
               </div>
             `;
           }).join('')
@@ -1623,6 +1634,9 @@ const AdminApp = (function() {
             <span style="font-size:16px;font-weight:700;color:#fff;">${AdminUI.escapeHtml(s.Nombre)}</span>
             <span style="color:#9ca3af;font-size:13px;">${s.cantidad_mesas || 0} mesa(s)</span>
             ${s.canal_existe === false ? '<span style="color:#f59e0b;font-size:12px;">⚠ canal despublicado</span>' : ''}
+            <span style="flex:1;"></span>
+            <button class="btn btn-secondary btn-sm" onclick="abrirModalNuevaMesa('${idSectorJs}','${nombreSectorJs}')">+ Mesa</button>
+            <button class="btn-icon-mini" title="Eliminar sector (y sus mesas)" onclick="eliminarSector('${idSectorJs}','${nombreSectorJs}',${s.cantidad_mesas || 0})" style="color:#f87171;">🗑</button>
           </div>
           <div class="sector-card-mesas">
             ${mesasHtml}
@@ -1637,6 +1651,166 @@ const AdminApp = (function() {
   function volverDeSectores() {
     AdminUI.mostrarPantalla('screen-dashboard');
     state.sectoresContexto = null;
+  }
+
+  // ── B2: alta y baja de sectores y mesas ──────────────────────────
+
+  /**
+   * Crea (al vuelo) un overlay de modal genérico reutilizable para sectores/mesas.
+   * Reusa las clases CSS existentes (modal-overlay, modal-box, etc.).
+   */
+  function _asegurarModalSectores() {
+    let ov = document.getElementById('modal-sectores-generico');
+    if (ov) return ov;
+    ov = document.createElement('div');
+    ov.id = 'modal-sectores-generico';
+    ov.className = 'modal-overlay';
+    ov.style.display = 'none';
+    ov.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 class="modal-title" id="modal-sect-titulo">—</h3>
+          <button class="modal-close" onclick="cerrarModalSectores()">×</button>
+        </div>
+        <div class="modal-body" id="modal-sect-body"></div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="cerrarModalSectores()">Cancelar</button>
+          <button class="btn btn-primary" id="modal-sect-ok" onclick="confirmarModalSectores()">Guardar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function cerrarModalSectores() {
+    const ov = document.getElementById('modal-sectores-generico');
+    if (ov) ov.style.display = 'none';
+    state.modalSectoresAccion = null;
+  }
+
+  function _abrirModalSectores(titulo, bodyHtml, accionFn, okLabel) {
+    const ov = _asegurarModalSectores();
+    document.getElementById('modal-sect-titulo').textContent = titulo;
+    document.getElementById('modal-sect-body').innerHTML = bodyHtml;
+    document.getElementById('modal-sect-ok').textContent = okLabel || 'Guardar';
+    state.modalSectoresAccion = accionFn;
+    ov.style.display = 'flex';
+  }
+
+  async function confirmarModalSectores() {
+    if (typeof state.modalSectoresAccion === 'function') {
+      await state.modalSectoresAccion();
+    }
+  }
+
+  // ── Nuevo sector (con su primera mesa — opción b: completo) ──
+  function abrirModalNuevoSector() {
+    const body = `
+      <label class="login-label" for="sect-nombre">Nombre del sector</label>
+      <input type="text" id="sect-nombre" class="login-input" placeholder="Piso 1, Vereda, Barra...">
+
+      <label class="login-label" for="sect-color" style="margin-top:10px;">Color (para distinguirlo)</label>
+      <input type="color" id="sect-color" value="#1B2B4A" style="width:60px;height:38px;border:none;background:none;cursor:pointer;">
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);">
+        <div style="color:#c4b5fd;font-weight:600;font-size:13px;margin-bottom:8px;">Primera mesa de este sector</div>
+        <label class="login-label" for="sect-mesa-num">Identificador de la mesa</label>
+        <input type="text" id="sect-mesa-num" class="login-input" placeholder="ej: 1, Barra 1, VIP-A">
+        <label class="login-label" for="sect-mesa-cap" style="margin-top:10px;">Capacidad (opcional)</label>
+        <input type="number" id="sect-mesa-cap" class="login-input" placeholder="ej: 4" min="1">
+      </div>
+      <div class="login-status" id="modal-sect-status" style="margin-top:10px;"></div>
+    `;
+    _abrirModalSectores('Nuevo sector', body, _guardarNuevoSector, 'Crear sector');
+  }
+
+  async function _guardarNuevoSector() {
+    const ctx = state.sectoresContexto;
+    const nombre = (document.getElementById('sect-nombre').value || '').trim();
+    const color = document.getElementById('sect-color').value || '';
+    const mesaNum = (document.getElementById('sect-mesa-num').value || '').trim();
+    const mesaCap = (document.getElementById('sect-mesa-cap').value || '').trim();
+    const status = document.getElementById('modal-sect-status');
+
+    if (!nombre) { status.textContent = 'Poné un nombre para el sector.'; status.style.color = '#f87171'; return; }
+    if (!mesaNum) { status.textContent = 'El identificador de la primera mesa es obligatorio.'; status.style.color = '#f87171'; return; }
+
+    const okBtn = document.getElementById('modal-sect-ok');
+    okBtn.disabled = true;
+    const resp = await AdminAPI.sectorCrear(ctx.idLocal, nombre, ctx.audienceSlug, color, mesaNum, mesaCap);
+    okBtn.disabled = false;
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'No pudimos crear el sector';
+      status.style.color = '#f87171';
+      return;
+    }
+    cerrarModalSectores();
+    AdminUI.toast('Sector creado', 'info');
+    await cargarSectores();
+  }
+
+  // ── Nueva mesa en un sector existente ──
+  function abrirModalNuevaMesa(idSector, nombreSector) {
+    const body = `
+      <div style="color:#9ca3af;font-size:13px;margin-bottom:10px;">Sector: <strong style="color:#fff;">${AdminUI.escapeHtml(nombreSector)}</strong></div>
+      <label class="login-label" for="mesa-num">Identificador de la mesa</label>
+      <input type="text" id="mesa-num" class="login-input" placeholder="ej: 1, Barra 1, VIP-A">
+      <label class="login-label" for="mesa-cap" style="margin-top:10px;">Capacidad (opcional)</label>
+      <input type="number" id="mesa-cap" class="login-input" placeholder="ej: 4" min="1">
+      <div class="login-status" id="modal-sect-status" style="margin-top:10px;"></div>
+    `;
+    _abrirModalSectores('Nueva mesa', body, function() { return _guardarNuevaMesa(idSector); }, 'Crear mesa');
+  }
+
+  async function _guardarNuevaMesa(idSector) {
+    const num = (document.getElementById('mesa-num').value || '').trim();
+    const cap = (document.getElementById('mesa-cap').value || '').trim();
+    const status = document.getElementById('modal-sect-status');
+
+    if (!num) { status.textContent = 'El identificador de la mesa es obligatorio.'; status.style.color = '#f87171'; return; }
+
+    const okBtn = document.getElementById('modal-sect-ok');
+    okBtn.disabled = true;
+    const resp = await AdminAPI.mesaCrear(idSector, num, '', cap);
+    okBtn.disabled = false;
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'No pudimos crear la mesa';
+      status.style.color = '#f87171';
+      return;
+    }
+    cerrarModalSectores();
+    AdminUI.toast('Mesa creada', 'info');
+    await cargarSectores();
+  }
+
+  // ── Eliminar mesa (con guarda de "no la última" en backend) ──
+  async function eliminarMesa(idMesa, numeroMesa) {
+    if (!confirm('¿Eliminar la mesa "' + numeroMesa + '"?\n\nSu QR dejará de funcionar.')) return;
+    const resp = await AdminAPI.mesaEliminar(idMesa);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos eliminar la mesa', 'error');
+      return;
+    }
+    AdminUI.toast('Mesa eliminada', 'info');
+    await cargarSectores();
+  }
+
+  // ── Eliminar sector (cascada: se lleva sus mesas) ──
+  async function eliminarSector(idSector, nombreSector, cantMesas) {
+    const aviso = cantMesas > 0
+      ? '¿Eliminar el sector "' + nombreSector + '" y sus ' + cantMesas + ' mesa(s)?\n\nLos QR de esas mesas dejarán de funcionar.'
+      : '¿Eliminar el sector "' + nombreSector + '"?';
+    if (!confirm(aviso)) return;
+    const resp = await AdminAPI.sectorEliminar(idSector);
+    if (!resp.ok) {
+      AdminUI.toast(resp.error || 'No pudimos eliminar el sector', 'error');
+      return;
+    }
+    AdminUI.toast(resp.mensaje || 'Sector eliminado', 'info');
+    await cargarSectores();
   }
 
   async function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
@@ -3401,7 +3575,14 @@ const AdminApp = (function() {
     guardarAdmin,
     // Sectores y Mesas (16/6)
     abrirSectoresMesas,
-    volverDeSectores
+    volverDeSectores,
+    // Sectores y Mesas — B2 (alta/baja)
+    abrirModalNuevoSector,
+    abrirModalNuevaMesa,
+    cerrarModalSectores,
+    confirmarModalSectores,
+    eliminarMesa,
+    eliminarSector
   };
 
 })();
@@ -3507,6 +3688,14 @@ function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nom
   AdminApp.abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa);
 }
 function volverDeSectores() { AdminApp.volverDeSectores(); }
+
+// Sectores y Mesas — B2 (alta/baja)
+function abrirModalNuevoSector() { AdminApp.abrirModalNuevoSector(); }
+function abrirModalNuevaMesa(idSector, nombreSector) { AdminApp.abrirModalNuevaMesa(idSector, nombreSector); }
+function cerrarModalSectores() { AdminApp.cerrarModalSectores(); }
+function confirmarModalSectores() { AdminApp.confirmarModalSectores(); }
+function eliminarMesa(idMesa, numeroMesa) { AdminApp.eliminarMesa(idMesa, numeroMesa); }
+function eliminarSector(idSector, nombreSector, cantMesas) { AdminApp.eliminarSector(idSector, nombreSector, cantMesas); }
 
 
 // ============================================================
