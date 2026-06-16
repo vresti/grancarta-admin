@@ -600,7 +600,7 @@ const AdminApp = (function() {
             ${bloqueSwapHtml}
             <div class="publicacion-sectores-row" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06);">
               <button class="btn btn-secondary btn-sm"
-                      onclick="abrirSectoresMesas('${AdminUI.escapeHtml(l.Id_Local)}','${AdminUI.escapeHtml(audienceSlug)}','${AdminUI.escapeHtml(pub.Nombre_Canal || '')}','${AdminUI.escapeHtml(l.Nombre || '')}','${AdminUI.escapeHtml(nombreEmpresa)}')">
+                      onclick="abrirSectoresMesas('${AdminUI.escapeHtml(l.Id_Local)}','${AdminUI.escapeHtml(audienceSlug)}','${AdminUI.escapeHtml(pub.Nombre_Canal || '')}','${AdminUI.escapeHtml(l.Nombre || '')}','${AdminUI.escapeHtml(nombreEmpresa)}','${AdminUI.escapeHtml(pub.Id_Publicacion || '')}')">
                 🪑 Sectores y mesas
               </button>
             </div>
@@ -1523,7 +1523,7 @@ const AdminApp = (function() {
    * Abre la pantalla de sectores y mesas de un canal concreto.
    * Llamada desde el botón "🪑 Sectores y mesas" de cada publicacion-card.
    */
-  async function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa) {
+  async function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa, idPublicacion) {
     const nombreCanalFinal = (nombreCanal && nombreCanal.trim() !== '')
       ? nombreCanal.trim()
       : _nombreCanalDesdeSlug(audienceSlug);
@@ -1534,19 +1534,24 @@ const AdminApp = (function() {
       nombreCanal: nombreCanalFinal,
       nombreLocal: nombreLocal || '',
       nombreEmpresa: nombreEmpresa || '',
+      idPublicacion: idPublicacion || '',
       sectores: []
     };
 
     _asegurarPantallaSectores();
 
-    // Breadcrumb: Empresa → Local → Espacio X
+    // Breadcrumb: Empresa → Local → Espacio X (con lapicito para renombrar el canal)
     const bc = document.getElementById('sectores-breadcrumb');
+    const lapicito = idPublicacion
+      ? ' <button class="btn-icon-mini" title="Renombrar canal" onclick="abrirModalRenombrarCanal()" style="vertical-align:middle;">✏️</button>'
+      : '';
     bc.innerHTML =
       '<span>' + AdminUI.escapeHtml(nombreEmpresa || '') + '</span>' +
       '<span style="opacity:.5;">→</span>' +
       '<span>' + AdminUI.escapeHtml(nombreLocal || '') + '</span>' +
       '<span style="opacity:.5;">→</span>' +
-      '<span style="color:#c4b5fd;font-weight:600;">Espacio ' + AdminUI.escapeHtml(nombreCanalFinal) + '</span>';
+      '<span id="sectores-breadcrumb-canal" style="color:#c4b5fd;font-weight:600;">Espacio ' + AdminUI.escapeHtml(nombreCanalFinal) + '</span>' +
+      lapicito;
 
     document.getElementById('sectores-titulo').textContent = '🪑 Sectores y mesas';
 
@@ -1616,18 +1621,22 @@ const AdminApp = (function() {
         ? mesas.map(function(m) {
             const idMesaJs = AdminUI.escapeHtml(m.Id_Mesa);
             const numMesaJs = AdminUI.escapeHtml(String(m.Numero)).replace(/'/g, "\\'");
+            const urlQrJs = AdminUI.escapeHtml(m.Url_Completa_QR || '').replace(/'/g, "\\'");
+            const capJs = AdminUI.escapeHtml(String(m.Capacidad || '')).replace(/'/g, "\\'");
             return `
-              <div class="mesa-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid rgba(255,255,255,.05);">
+              <div class="mesa-row" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid rgba(255,255,255,.05);">
                 <span style="font-weight:600;color:#fff;min-width:90px;">${AdminUI.escapeHtml(String(m.Numero))}</span>
                 <span style="color:#9ca3af;flex:1;">${AdminUI.escapeHtml(m.Nombre_Visible || '')}</span>
                 ${m.Capacidad ? '<span style="color:#6b7280;font-size:12px;">👥 ' + AdminUI.escapeHtml(String(m.Capacidad)) + '</span>' : ''}
-                <code style="font-size:11px;color:#6b7280;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:4px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${AdminUI.escapeHtml(m.Url_Completa_QR || '')}</code>
+                <button class="btn-icon-mini" title="Descargar QR para imprimir" onclick="descargarQrMesa('${urlQrJs}','${numMesaJs}','${nombreSectorJs}')">🔲</button>
+                <button class="btn-icon-mini" title="Editar mesa" onclick="abrirModalEditarMesa('${idMesaJs}','${numMesaJs}','${capJs}')">✏️</button>
                 <button class="btn-icon-mini" title="Eliminar mesa" onclick="eliminarMesa('${idMesaJs}','${numMesaJs}')" style="color:#f87171;">🗑</button>
               </div>
             `;
           }).join('')
         : '<div style="padding:8px 12px;color:#6b7280;font-size:13px;">Sin mesas</div>';
 
+      const colorJs = AdminUI.escapeHtml(color).replace(/'/g, "\\'");
       html += `
         <div class="sector-card" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:14px;overflow:hidden;">
           <div class="sector-card-header" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-left:4px solid ${color};">
@@ -1636,6 +1645,7 @@ const AdminApp = (function() {
             ${s.canal_existe === false ? '<span style="color:#f59e0b;font-size:12px;">⚠ canal despublicado</span>' : ''}
             <span style="flex:1;"></span>
             <button class="btn btn-secondary btn-sm" onclick="abrirModalNuevaMesa('${idSectorJs}','${nombreSectorJs}')">+ Mesa</button>
+            <button class="btn-icon-mini" title="Editar sector" onclick="abrirModalEditarSector('${idSectorJs}','${nombreSectorJs}','${colorJs}')">✏️</button>
             <button class="btn-icon-mini" title="Eliminar sector (y sus mesas)" onclick="eliminarSector('${idSectorJs}','${nombreSectorJs}',${s.cantidad_mesas || 0})" style="color:#f87171;">🗑</button>
           </div>
           <div class="sector-card-mesas">
@@ -1811,6 +1821,130 @@ const AdminApp = (function() {
     }
     AdminUI.toast(resp.mensaje || 'Sector eliminado', 'info');
     await cargarSectores();
+  }
+
+  // ── B3: editar mesa, editar sector, QR imprimible ────────────────
+
+  // ── Editar mesa (identificador + capacidad) ──
+  function abrirModalEditarMesa(idMesa, numeroActual, capacidadActual) {
+    const body = `
+      <label class="login-label" for="emesa-num">Identificador de la mesa</label>
+      <input type="text" id="emesa-num" class="login-input" placeholder="ej: 1, Barra 1, VIP-A" value="${AdminUI.escapeHtml(numeroActual)}">
+      <label class="login-label" for="emesa-cap" style="margin-top:10px;">Capacidad (opcional)</label>
+      <input type="number" id="emesa-cap" class="login-input" placeholder="ej: 4" min="1" value="${AdminUI.escapeHtml(capacidadActual)}">
+      <div class="login-status" id="modal-sect-status" style="margin-top:10px;"></div>
+    `;
+    _abrirModalSectores('Editar mesa', body, function() { return _guardarEdicionMesa(idMesa); }, 'Guardar cambios');
+  }
+
+  async function _guardarEdicionMesa(idMesa) {
+    const num = (document.getElementById('emesa-num').value || '').trim();
+    const cap = (document.getElementById('emesa-cap').value || '').trim();
+    const status = document.getElementById('modal-sect-status');
+
+    if (!num) { status.textContent = 'El identificador de la mesa es obligatorio.'; status.style.color = '#f87171'; return; }
+
+    const okBtn = document.getElementById('modal-sect-ok');
+    okBtn.disabled = true;
+    const resp = await AdminAPI.mesaActualizar(idMesa, { numero: num, capacidad: cap });
+    okBtn.disabled = false;
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'No pudimos guardar la mesa';
+      status.style.color = '#f87171';
+      return;
+    }
+    cerrarModalSectores();
+    AdminUI.toast('Mesa actualizada', 'info');
+    await cargarSectores();
+  }
+
+  // ── Editar sector (nombre + color) ──
+  function abrirModalEditarSector(idSector, nombreActual, colorActual) {
+    const color = (colorActual && colorActual.trim() !== '') ? colorActual : '#1B2B4A';
+    const body = `
+      <label class="login-label" for="esect-nombre">Nombre del sector</label>
+      <input type="text" id="esect-nombre" class="login-input" placeholder="Piso 1, Vereda, Barra..." value="${AdminUI.escapeHtml(nombreActual)}">
+      <label class="login-label" for="esect-color" style="margin-top:10px;">Color</label>
+      <input type="color" id="esect-color" value="${AdminUI.escapeHtml(color)}" style="width:60px;height:38px;border:none;background:none;cursor:pointer;">
+      <div class="login-status" id="modal-sect-status" style="margin-top:10px;"></div>
+    `;
+    _abrirModalSectores('Editar sector', body, function() { return _guardarEdicionSector(idSector); }, 'Guardar cambios');
+  }
+
+  async function _guardarEdicionSector(idSector) {
+    const nombre = (document.getElementById('esect-nombre').value || '').trim();
+    const color = document.getElementById('esect-color').value || '';
+    const status = document.getElementById('modal-sect-status');
+
+    if (!nombre) { status.textContent = 'Poné un nombre para el sector.'; status.style.color = '#f87171'; return; }
+
+    const okBtn = document.getElementById('modal-sect-ok');
+    okBtn.disabled = true;
+    const resp = await AdminAPI.sectorActualizar(idSector, { nombre: nombre, color_hex: color });
+    okBtn.disabled = false;
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'No pudimos guardar el sector';
+      status.style.color = '#f87171';
+      return;
+    }
+    cerrarModalSectores();
+    AdminUI.toast('Sector actualizado', 'info');
+    await cargarSectores();
+  }
+
+  // ── QR imprimible de una mesa (reusa descargarQrLocal) ──
+  function descargarQrMesa(urlQr, numeroMesa, nombreSector) {
+    if (!urlQr) {
+      AdminUI.toast('Esta mesa no tiene URL de QR', 'error');
+      return;
+    }
+    // El "título" del QR es el identificador de la mesa + su sector,
+    // para que el dueño sepa qué QR imprimió: "Mesa 5 · Piso 2".
+    const titulo = (numeroMesa || 'Mesa') + (nombreSector ? ' · ' + nombreSector : '');
+    descargarQrLocal(urlQr, titulo);
+  }
+
+  // ── Renombrar canal ("Espacio X") desde el breadcrumb ──
+  function abrirModalRenombrarCanal() {
+    const ctx = state.sectoresContexto;
+    if (!ctx || !ctx.idPublicacion) {
+      AdminUI.toast('No pude identificar el canal para renombrar', 'error');
+      return;
+    }
+    const body = `
+      <div style="color:#9ca3af;font-size:13px;margin-bottom:10px;">Se mostrará como <strong style="color:#c4b5fd;">Espacio <span id="ecanal-preview">${AdminUI.escapeHtml(ctx.nombreCanal)}</span></strong></div>
+      <label class="login-label" for="ecanal-nombre">Nombre del canal</label>
+      <input type="text" id="ecanal-nombre" class="login-input" placeholder="Principal, Delivery, Barra, Terraza..." value="${AdminUI.escapeHtml(ctx.nombreCanal)}" oninput="document.getElementById('ecanal-preview').textContent = this.value || '—'">
+      <div class="login-status" id="modal-sect-status" style="margin-top:10px;"></div>
+    `;
+    _abrirModalSectores('Renombrar canal', body, _guardarNombreCanal, 'Guardar');
+  }
+
+  async function _guardarNombreCanal() {
+    const ctx = state.sectoresContexto;
+    const nombre = (document.getElementById('ecanal-nombre').value || '').trim();
+    const status = document.getElementById('modal-sect-status');
+
+    if (!nombre) { status.textContent = 'El nombre del canal no puede estar vacío.'; status.style.color = '#f87171'; return; }
+
+    const okBtn = document.getElementById('modal-sect-ok');
+    okBtn.disabled = true;
+    const resp = await AdminAPI.publicacionRenombrarCanal(ctx.idPublicacion, nombre);
+    okBtn.disabled = false;
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'No pudimos renombrar el canal';
+      status.style.color = '#f87171';
+      return;
+    }
+    cerrarModalSectores();
+    // Actualizar el breadcrumb en vivo
+    ctx.nombreCanal = nombre;
+    const bcCanal = document.getElementById('sectores-breadcrumb-canal');
+    if (bcCanal) bcCanal.textContent = 'Espacio ' + nombre;
+    AdminUI.toast('Canal renombrado', 'info');
   }
 
   async function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
@@ -3582,7 +3716,12 @@ const AdminApp = (function() {
     cerrarModalSectores,
     confirmarModalSectores,
     eliminarMesa,
-    eliminarSector
+    eliminarSector,
+    // Sectores y Mesas — B3 (editar + QR + renombrar canal)
+    abrirModalEditarMesa,
+    abrirModalEditarSector,
+    descargarQrMesa,
+    abrirModalRenombrarCanal
   };
 
 })();
@@ -3684,8 +3823,8 @@ function cerrarModalAdmin() { AdminApp.cerrarModalAdmin(); }
 function guardarAdmin() { AdminApp.guardarAdmin(); }
 
 // Sectores y Mesas (16/6)
-function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa) {
-  AdminApp.abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa);
+function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa, idPublicacion) {
+  AdminApp.abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa, idPublicacion);
 }
 function volverDeSectores() { AdminApp.volverDeSectores(); }
 
@@ -3696,6 +3835,12 @@ function cerrarModalSectores() { AdminApp.cerrarModalSectores(); }
 function confirmarModalSectores() { AdminApp.confirmarModalSectores(); }
 function eliminarMesa(idMesa, numeroMesa) { AdminApp.eliminarMesa(idMesa, numeroMesa); }
 function eliminarSector(idSector, nombreSector, cantMesas) { AdminApp.eliminarSector(idSector, nombreSector, cantMesas); }
+
+// Sectores y Mesas — B3 (editar + QR + renombrar canal)
+function abrirModalEditarMesa(idMesa, numeroActual, capacidadActual) { AdminApp.abrirModalEditarMesa(idMesa, numeroActual, capacidadActual); }
+function abrirModalEditarSector(idSector, nombreActual, colorActual) { AdminApp.abrirModalEditarSector(idSector, nombreActual, colorActual); }
+function descargarQrMesa(urlQr, numeroMesa, nombreSector) { AdminApp.descargarQrMesa(urlQr, numeroMesa, nombreSector); }
+function abrirModalRenombrarCanal() { AdminApp.abrirModalRenombrarCanal(); }
 
 
 // ============================================================
