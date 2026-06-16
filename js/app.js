@@ -1495,7 +1495,6 @@ const AdminApp = (function() {
     screen = document.createElement('div');
     screen.id = 'screen-sectores-mesas';
     screen.className = 'screen';
-    screen.style.display = 'none';
     screen.innerHTML = `
       <div class="screen-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px;">
         <div>
