@@ -383,6 +383,13 @@ const AdminAPI = (function() {
     },
 
     /**
+     * Devuelve la URL pública del QR de una mesa (carta oficial del worker + ?t=token).
+     */
+    mesaObtenerUrlQr(idMesa) {
+      return llamar('mesa_obtener_url_qr', { id_mesa: idMesa });
+    },
+
+    /**
      * Lista las mesas de un sector (o de un local entero).
      */
     mesaListar(idSector, idLocal) {

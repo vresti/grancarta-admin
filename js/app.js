@@ -1628,7 +1628,7 @@ const AdminApp = (function() {
                 <span style="font-weight:600;color:#fff;min-width:90px;">${AdminUI.escapeHtml(String(m.Numero))}</span>
                 <span style="color:#9ca3af;flex:1;">${AdminUI.escapeHtml(m.Nombre_Visible || '')}</span>
                 ${m.Capacidad ? '<span style="color:#6b7280;font-size:12px;">👥 ' + AdminUI.escapeHtml(String(m.Capacidad)) + '</span>' : ''}
-                <button class="btn-icon-mini" title="Descargar QR para imprimir" onclick="descargarQrMesa('${urlQrJs}','${numMesaJs}','${nombreSectorJs}')">🔲</button>
+                <button class="btn-icon-mini" title="Descargar QR para imprimir" onclick="descargarQrMesa('${idMesaJs}','${numMesaJs}','${nombreSectorJs}')">🔲</button>
                 <button class="btn-icon-mini" title="Editar mesa" onclick="abrirModalEditarMesa('${idMesaJs}','${numMesaJs}','${capJs}')">✏️</button>
                 <button class="btn-icon-mini" title="Eliminar mesa" onclick="eliminarMesa('${idMesaJs}','${numMesaJs}')" style="color:#f87171;">🗑</button>
               </div>
@@ -1957,16 +1957,26 @@ const AdminApp = (function() {
     await cargarSectores();
   }
 
-  // ── QR imprimible de una mesa (reusa descargarQrLocal) ──
-  function descargarQrMesa(urlQr, numeroMesa, nombreSector) {
-    if (!urlQr) {
-      AdminUI.toast('Esta mesa no tiene URL de QR', 'error');
+  // ── QR imprimible de una mesa (pide la URL pública al backend) ──
+  async function descargarQrMesa(idMesa, numeroMesa, nombreSector) {
+    if (!idMesa) {
+      AdminUI.toast('No pude identificar la mesa', 'error');
+      return;
+    }
+    AdminUI.setLoading(true);
+    // La URL pública del QR la arma el backend (mesa→sector→canal→local→empresa→slugs).
+    // Siempre lleva ?t=<token>; apunta a la carta oficial del worker.
+    const resp = await AdminAPI.mesaObtenerUrlQr(idMesa);
+    AdminUI.setLoading(false);
+
+    if (!resp.ok || !resp.url_qr) {
+      AdminUI.toast(resp.error || 'No pudimos armar la URL del QR', 'error');
       return;
     }
     // El "título" del QR es el identificador de la mesa + su sector,
     // para que el dueño sepa qué QR imprimió: "Mesa 5 · Piso 2".
     const titulo = (numeroMesa || 'Mesa') + (nombreSector ? ' · ' + nombreSector : '');
-    descargarQrLocal(urlQr, titulo);
+    descargarQrLocal(resp.url_qr, titulo);
   }
 
   // ── Renombrar canal ("Espacio X") desde el breadcrumb ──
@@ -3906,7 +3916,7 @@ function confirmarToggleBotones(idSector, activo, alcance) { AdminApp.confirmarT
 // Sectores y Mesas — B3 (editar + QR + renombrar canal)
 function abrirModalEditarMesa(idMesa, numeroActual, capacidadActual) { AdminApp.abrirModalEditarMesa(idMesa, numeroActual, capacidadActual); }
 function abrirModalEditarSector(idSector, nombreActual, colorActual) { AdminApp.abrirModalEditarSector(idSector, nombreActual, colorActual); }
-function descargarQrMesa(urlQr, numeroMesa, nombreSector) { AdminApp.descargarQrMesa(urlQr, numeroMesa, nombreSector); }
+function descargarQrMesa(idMesa, numeroMesa, nombreSector) { AdminApp.descargarQrMesa(idMesa, numeroMesa, nombreSector); }
 function abrirModalRenombrarCanal() { AdminApp.abrirModalRenombrarCanal(); }
 
 
