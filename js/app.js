@@ -1637,6 +1637,10 @@ const AdminApp = (function() {
         : '<div style="padding:8px 12px;color:#6b7280;font-size:13px;">Sin mesas</div>';
 
       const colorJs = AdminUI.escapeHtml(color).replace(/'/g, "\\'");
+      const botonesOn = s.Botones_Activos === true;
+      const toggleTexto = botonesOn
+        ? '🔔 Los clientes pueden llamar al mozo desde la carta'
+        : '🔕 Los clientes ven la carta sin botones de llamado';
       html += `
         <div class="sector-card" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:14px;overflow:hidden;">
           <div class="sector-card-header" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-left:4px solid ${color};">
@@ -1647,6 +1651,14 @@ const AdminApp = (function() {
             <button class="btn btn-secondary btn-sm" onclick="abrirModalNuevaMesa('${idSectorJs}','${nombreSectorJs}')">+ Mesa</button>
             <button class="btn-icon-mini" title="Editar sector" onclick="abrirModalEditarSector('${idSectorJs}','${nombreSectorJs}','${colorJs}')">✏️</button>
             <button class="btn-icon-mini" title="Eliminar sector (y sus mesas)" onclick="eliminarSector('${idSectorJs}','${nombreSectorJs}',${s.cantidad_mesas || 0})" style="color:#f87171;">🗑</button>
+          </div>
+          <div class="sector-botones-row" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05);">
+            <button class="switch-botones${botonesOn ? ' is-on' : ''}" role="switch" aria-checked="${botonesOn}"
+                    onclick="toggleBotonesSector('${idSectorJs}','${nombreSectorJs}',${botonesOn})"
+                    style="position:relative;width:46px;height:26px;border-radius:999px;border:none;cursor:pointer;flex-shrink:0;background:${botonesOn ? '#22c55e' : '#3f3f46'};transition:background .2s;">
+              <span style="position:absolute;top:3px;left:${botonesOn ? '23px' : '3px'};width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;"></span>
+            </button>
+            <span style="color:${botonesOn ? '#86efac' : '#9ca3af'};font-size:12.5px;">${toggleTexto}</span>
           </div>
           <div class="sector-card-mesas">
             ${mesasHtml}
@@ -1696,6 +1708,9 @@ const AdminApp = (function() {
   function cerrarModalSectores() {
     const ov = document.getElementById('modal-sectores-generico');
     if (ov) ov.style.display = 'none';
+    // Restaurar el botón Guardar (el toggle de botones lo oculta)
+    const okBtn = document.getElementById('modal-sect-ok');
+    if (okBtn) okBtn.style.display = '';
     state.modalSectoresAccion = null;
   }
 
@@ -1820,6 +1835,54 @@ const AdminApp = (function() {
       return;
     }
     AdminUI.toast(resp.mensaje || 'Sector eliminado', 'info');
+    await cargarSectores();
+  }
+
+  // ── Toggle de botones de atención (con modal de alcance: bonus track) ──
+  function toggleBotonesSector(idSector, nombreSector, estadoActual) {
+    // estadoActual = estado vigente; al togglear, el destino es el opuesto
+    const destino = !estadoActual;
+    const accionTxt = destino ? 'prender' : 'apagar';
+    const body = `
+      <div style="color:#d1d5db;font-size:14px;line-height:1.6;margin-bottom:6px;">
+        Vas a <strong style="color:${destino ? '#86efac' : '#fca5a5'};">${accionTxt}</strong>
+        los botones de llamado.
+      </div>
+      <div style="color:#9ca3af;font-size:13px;margin-bottom:16px;">
+        ¿Aplicar solo al sector <strong style="color:#fff;">${AdminUI.escapeHtml(nombreSector)}</strong>,
+        o a todos los sectores de la sucursal?
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn btn-primary" onclick="confirmarToggleBotones('${AdminUI.escapeHtml(idSector)}',${destino},'sector')">
+          Solo este sector
+        </button>
+        <button class="btn btn-secondary" onclick="confirmarToggleBotones('${AdminUI.escapeHtml(idSector)}',${destino},'sucursal')">
+          Toda la sucursal
+        </button>
+      </div>
+      <div class="login-status" id="modal-sect-status" style="margin-top:12px;"></div>
+    `;
+    // Reusamos el modal genérico, pero la acción la disparan los botones del body.
+    _abrirModalSectores(destino ? 'Prender botones de atención' : 'Apagar botones de atención', body, null, '');
+    // Ocultar el botón "Guardar" del pie (acá decidimos con los 2 botones del body)
+    const okBtn = document.getElementById('modal-sect-ok');
+    if (okBtn) okBtn.style.display = 'none';
+  }
+
+  async function confirmarToggleBotones(idSector, activo, alcance) {
+    const status = document.getElementById('modal-sect-status');
+    if (status) { status.textContent = 'Guardando…'; status.style.color = '#9ca3af'; }
+
+    const resp = await AdminAPI.sectorToggleBotones(idSector, activo, alcance);
+    if (!resp.ok) {
+      if (status) { status.textContent = resp.error || 'No pudimos guardar'; status.style.color = '#f87171'; }
+      return;
+    }
+    // Restaurar el botón Guardar para futuros usos del modal genérico
+    const okBtn = document.getElementById('modal-sect-ok');
+    if (okBtn) okBtn.style.display = '';
+    cerrarModalSectores();
+    AdminUI.toast(resp.mensaje || 'Botones actualizados', 'info');
     await cargarSectores();
   }
 
@@ -3717,6 +3780,8 @@ const AdminApp = (function() {
     confirmarModalSectores,
     eliminarMesa,
     eliminarSector,
+    toggleBotonesSector,
+    confirmarToggleBotones,
     // Sectores y Mesas — B3 (editar + QR + renombrar canal)
     abrirModalEditarMesa,
     abrirModalEditarSector,
@@ -3835,6 +3900,8 @@ function cerrarModalSectores() { AdminApp.cerrarModalSectores(); }
 function confirmarModalSectores() { AdminApp.confirmarModalSectores(); }
 function eliminarMesa(idMesa, numeroMesa) { AdminApp.eliminarMesa(idMesa, numeroMesa); }
 function eliminarSector(idSector, nombreSector, cantMesas) { AdminApp.eliminarSector(idSector, nombreSector, cantMesas); }
+function toggleBotonesSector(idSector, nombreSector, estadoActual) { AdminApp.toggleBotonesSector(idSector, nombreSector, estadoActual); }
+function confirmarToggleBotones(idSector, activo, alcance) { AdminApp.confirmarToggleBotones(idSector, activo, alcance); }
 
 // Sectores y Mesas — B3 (editar + QR + renombrar canal)
 function abrirModalEditarMesa(idMesa, numeroActual, capacidadActual) { AdminApp.abrirModalEditarMesa(idMesa, numeroActual, capacidadActual); }

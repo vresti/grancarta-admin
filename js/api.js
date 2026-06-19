@@ -371,6 +371,18 @@ const AdminAPI = (function() {
     },
 
     /**
+     * Prende/apaga los botones de atención de un sector o de toda la sucursal.
+     * alcance: 'sector' (solo este) | 'sucursal' (todos los del local)
+     */
+    sectorToggleBotones(idSector, activo, alcance) {
+      return llamar('sector_toggle_botones', {
+        id_sector: idSector,
+        activo: !!activo,
+        alcance: alcance || 'sector'
+      });
+    },
+
+    /**
      * Lista las mesas de un sector (o de un local entero).
      */
     mesaListar(idSector, idLocal) {
