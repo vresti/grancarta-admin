@@ -390,6 +390,31 @@ const AdminAPI = (function() {
     },
 
     /**
+     * Devuelve todas las mesas de un local listas para imprimir en la hoja A4 de QR,
+     * con filtros opcionales por canal (audienceSlug) y/o sector (idSector).
+     * - sin filtros        → todas las mesas del local
+     * - audienceSlug dado  → solo las de ese canal
+     * - idSector dado      → solo las de ese sector (gana sobre el canal)
+     */
+    localObtenerQrsImprimir(idLocal, audienceSlug, idSector) {
+      const p = { id_local: idLocal };
+      if (audienceSlug !== null && audienceSlug !== undefined) p.audience_slug = audienceSlug;
+      if (idSector) p.id_sector = idSector;
+      return llamar('local_obtener_qrs_imprimir', p);
+    },
+
+    /**
+     * Devuelve todas las mesas de un local para imprimir la hoja A4 de QR,
+     * con filtros opcionales por canal (audience_slug) y/o sector (id_sector).
+     */
+    localObtenerQrsImprimir(idLocal, audienceSlug, idSector) {
+      const p = { id_local: idLocal };
+      if (audienceSlug != null) p.audience_slug = audienceSlug;
+      if (idSector) p.id_sector = idSector;
+      return llamar('local_obtener_qrs_imprimir', p);
+    },
+
+    /**
      * Lista las mesas de un sector (o de un local entero).
      */
     mesaListar(idSector, idLocal) {

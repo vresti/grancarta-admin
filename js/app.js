@@ -1590,10 +1590,11 @@ const AdminApp = (function() {
     const totalMesas = sectores.reduce(function(t, s) { return t + (s.cantidad_mesas || 0); }, 0);
     stats.textContent = sectores.length + ' sector(es) · ' + totalMesas + ' mesa(s) en este canal';
 
-    // Botón "+ Nuevo sector" (siempre visible arriba de la lista)
+    // Botón "+ Nuevo sector" + "Imprimir QRs" (alineados arriba de la lista)
     const btnNuevoSector =
-      '<div style="margin-bottom:16px;">' +
+      '<div style="margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
         '<button class="btn btn-primary" onclick="abrirModalNuevoSector()">+ Nuevo sector</button>' +
+        '<button class="btn" onclick="abrirModalImprimirQrs()" style="background:#0EA5E9;color:#fff;font-weight:600;">🖨️ Imprimir QRs</button>' +
       '</div>';
 
     if (sectores.length === 0) {
@@ -1884,6 +1885,213 @@ const AdminApp = (function() {
     cerrarModalSectores();
     AdminUI.toast(resp.mensaje || 'Botones actualizados', 'info');
     await cargarSectores();
+  }
+
+  // ── Imprimir QRs (hoja A4) — modal con dropdowns canal/sector ──
+  async function abrirModalImprimirQrs() {
+    const ctx = state.sectoresContexto;
+    if (!ctx || !ctx.idLocal) { AdminUI.toast('Abrí un canal primero', 'error'); return; }
+
+    // Traer los canales (publicaciones) del local para el dropdown.
+    // El id_empresa lo tomo de la empresa activa del admin.
+    const idEmpresa = state.idEmpresaActiva || null;
+
+    let canales = [];
+    const respPub = await AdminAPI.publicacionListar(idEmpresa, ctx.idLocal);
+    if (respPub && respPub.ok && Array.isArray(respPub.publicaciones)) {
+      // Cada publicación tiene audience_slug y un nombre de canal
+      canales = respPub.publicaciones.map(function(p) {
+        const slug = (p.audience_slug || p.Audience_Slug || '').trim();
+        return {
+          slug: slug,
+          label: slug ? (p.nombre_canal || p.Nombre_Canal || slug) : 'Principal'
+        };
+      });
+    }
+    // Fallback: si no vinieron canales, al menos el actual
+    if (canales.length === 0) {
+      canales = [{ slug: ctx.audienceSlug || '', label: ctx.nombreCanal || 'Principal' }];
+    }
+
+    const optsCanal = ['<option value="__todos">Todos los canales</option>']
+      .concat(canales.map(function(c) {
+        return '<option value="' + AdminUI.escapeHtml(c.slug) + '">' + AdminUI.escapeHtml(c.label) + '</option>';
+      })).join('');
+
+    const body = `
+      <div style="color:#9ca3af;font-size:13px;margin-bottom:14px;line-height:1.5;">
+        ${AdminUI.escapeHtml(ctx.nombreEmpresa || '')} → ${AdminUI.escapeHtml(ctx.nombreLocal || '')}<br>
+        Elegí qué QR imprimir. Se abre una hoja A4 lista para imprimir y recortar.
+      </div>
+
+      <label class="login-label" for="qr-canal">Canal</label>
+      <select id="qr-canal" class="login-input" onchange="onCambioCanalImprimir()">
+        ${optsCanal}
+      </select>
+
+      <div id="qr-sector-wrap" style="display:none;margin-top:12px;">
+        <label class="login-label" for="qr-sector">Sector</label>
+        <select id="qr-sector" class="login-input">
+          <option value="__todos">Todos los sectores</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="confirmarImprimirQrs()">🖨️ Generar hoja</button>
+      </div>
+      <div class="login-status" id="qr-imprimir-status" style="margin-top:10px;"></div>
+    `;
+    _abrirModalSectores('Imprimir QRs', body, null, '');
+    const okBtn = document.getElementById('modal-sect-ok');
+    if (okBtn) okBtn.style.display = 'none';
+  }
+
+  // Al cambiar el canal: si es uno puntual, mostrar el dropdown de sector con
+  // los sectores de ese canal. Si es "todos", ocultar el de sector.
+  async function onCambioCanalImprimir() {
+    const ctx = state.sectoresContexto;
+    const canalSel = document.getElementById('qr-canal').value;
+    const wrap = document.getElementById('qr-sector-wrap');
+    const selSector = document.getElementById('qr-sector');
+
+    if (canalSel === '__todos') {
+      wrap.style.display = 'none';
+      return;
+    }
+    // Traer los sectores del local y filtrar por el canal elegido
+    const resp = await AdminAPI.sectorListar(ctx.idLocal, false);
+    let sectores = (resp && resp.ok && resp.sectores) ? resp.sectores : [];
+    sectores = sectores.filter(function(s) {
+      return (s.Audience_Slug || '') === canalSel;
+    });
+    selSector.innerHTML = '<option value="__todos">Todos los sectores</option>' +
+      sectores.map(function(s) {
+        return '<option value="' + AdminUI.escapeHtml(s.Id_Sector) + '">' + AdminUI.escapeHtml(s.Nombre) + '</option>';
+      }).join('');
+    wrap.style.display = 'block';
+  }
+
+  async function confirmarImprimirQrs() {
+    const ctx = state.sectoresContexto;
+    const status = document.getElementById('qr-imprimir-status');
+    const canalSel = document.getElementById('qr-canal').value;
+    const sectorEl = document.getElementById('qr-sector');
+    const sectorSel = (sectorEl && document.getElementById('qr-sector-wrap').style.display !== 'none')
+      ? sectorEl.value : '__todos';
+
+    if (status) { status.textContent = 'Buscando mesas…'; status.style.color = '#9ca3af'; }
+
+    // Armar filtros para el backend
+    const audienceSlug = (canalSel === '__todos') ? null : canalSel;
+    const idSector = (sectorSel && sectorSel !== '__todos') ? sectorSel : null;
+
+    const resp = await AdminAPI.localObtenerQrsImprimir(ctx.idLocal, audienceSlug, idSector);
+    if (!resp || !resp.ok) {
+      if (status) { status.textContent = (resp && resp.error) || 'No pudimos traer las mesas'; status.style.color = '#f87171'; }
+      return;
+    }
+    if (!resp.mesas || resp.mesas.length === 0) {
+      if (status) { status.textContent = 'No hay mesas para esa selección'; status.style.color = '#f59e0b'; }
+      return;
+    }
+
+    // Asegurar que la librería de QR esté cargada antes de abrir la hoja
+    if (typeof qrcode === 'undefined') {
+      if (status) { status.textContent = 'Cargando generador de QR…'; }
+      cargarScriptCDN('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js', function() {
+        _abrirHojaQrA4(resp);
+        cerrarModalSectores();
+      });
+      return;
+    }
+    _abrirHojaQrA4(resp);
+    cerrarModalSectores();
+  }
+
+  // Abre una ventana nueva con la hoja A4 maquetada (cuadritos con QR + textos).
+  function _abrirHojaQrA4(data) {
+    const empresaNom = data.empresa ? data.empresa.nombre : '';
+    const localNom = data.local ? data.local.nombre : '';
+    const mesas = data.mesas || [];
+
+    // Generar el dataURL del QR de cada mesa (con la librería ya cargada)
+    function qrDataUrl(url) {
+      const qr = qrcode(0, 'H');
+      qr.addData(url);
+      qr.make();
+      return qr.createDataURL(6, 0); // cellSize 6, margin 0
+    }
+
+    let celdas = '';
+    mesas.forEach(function(m) {
+      const arriba = (m.canal_label ? (m.canal_label + ' · ') : '') + (m.sector_nombre || '');
+      const mesaTxt = m.numero || m.nombre_visible || '';
+      const abajo = (empresaNom ? empresaNom : '') + (localNom ? (' · ' + localNom) : '');
+      celdas += `
+        <div class="qr-celda">
+          <div class="qr-arriba">${escAttr(arriba)}</div>
+          <div class="qr-mesa">${escAttr(mesaTxt)}</div>
+          <img class="qr-img" src="${qrDataUrl(m.url_qr)}" alt="QR ${escAttr(mesaTxt)}">
+          <div class="qr-abajo">${escAttr(abajo)}</div>
+        </div>`;
+    });
+
+    function escAttr(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<title>QRs · ${escAttr(localNom)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f0f0; padding: 10mm; }
+  .barra-print {
+    position: sticky; top: 0; background: #1B2B4A; color: #fff; padding: 12px 16px;
+    border-radius: 10px; margin-bottom: 10mm; display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 10px rgba(0,0,0,.2);
+  }
+  .barra-print h1 { font-size: 15px; font-weight: 600; }
+  .barra-print small { opacity: .8; font-weight: 400; }
+  .barra-print button {
+    background: #0EA5E9; color: #fff; border: none; border-radius: 8px;
+    padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .hoja {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm;
+    background: #fff; padding: 8mm; border-radius: 4px; max-width: 210mm; margin: 0 auto;
+  }
+  .qr-celda {
+    border: 1px dashed #b0b0b0; border-radius: 6px; padding: 4mm 2mm;
+    display: flex; flex-direction: column; align-items: center; gap: 1.5mm;
+    text-align: center; break-inside: avoid; page-break-inside: avoid; min-height: 58mm;
+    justify-content: center;
+  }
+  .qr-arriba { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; line-height: 1.2; }
+  .qr-mesa { font-size: 15px; font-weight: 800; color: #1A1A2A; line-height: 1.1; margin-bottom: 1mm; }
+  .qr-img { width: 38mm; height: 38mm; display: block; }
+  .qr-abajo { font-size: 8px; color: #888; margin-top: 1mm; line-height: 1.2; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .barra-print { display: none; }
+    .hoja { box-shadow: none; padding: 6mm; gap: 3mm; }
+    @page { size: A4; margin: 8mm; }
+  }
+</style></head>
+<body>
+  <div class="barra-print">
+    <h1>QRs para imprimir <small>· ${escAttr(empresaNom)} · ${escAttr(localNom)} · ${mesas.length} mesa(s)</small></h1>
+    <button onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  </div>
+  <div class="hoja">${celdas}</div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { AdminUI.toast('Permití las ventanas emergentes para abrir la hoja', 'error'); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   }
 
   // ── B3: editar mesa, editar sector, QR imprimible ────────────────
@@ -3796,7 +4004,11 @@ const AdminApp = (function() {
     abrirModalEditarMesa,
     abrirModalEditarSector,
     descargarQrMesa,
-    abrirModalRenombrarCanal
+    abrirModalRenombrarCanal,
+    // Sectores y Mesas — Imprimir QRs (hoja A4)
+    abrirModalImprimirQrs,
+    onCambioCanalImprimir,
+    confirmarImprimirQrs
   };
 
 })();
@@ -3918,6 +4130,11 @@ function abrirModalEditarMesa(idMesa, numeroActual, capacidadActual) { AdminApp.
 function abrirModalEditarSector(idSector, nombreActual, colorActual) { AdminApp.abrirModalEditarSector(idSector, nombreActual, colorActual); }
 function descargarQrMesa(idMesa, numeroMesa, nombreSector) { AdminApp.descargarQrMesa(idMesa, numeroMesa, nombreSector); }
 function abrirModalRenombrarCanal() { AdminApp.abrirModalRenombrarCanal(); }
+
+// Sectores y Mesas — Imprimir QRs (hoja A4)
+function abrirModalImprimirQrs() { AdminApp.abrirModalImprimirQrs(); }
+function onCambioCanalImprimir() { AdminApp.onCambioCanalImprimir(); }
+function confirmarImprimirQrs() { AdminApp.confirmarImprimirQrs(); }
 
 
 // ============================================================
