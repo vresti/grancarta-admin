@@ -229,9 +229,32 @@ const AdminApp = (function() {
     localStorage.setItem('admin_jwt', resp.token);
     localStorage.setItem('admin_mail', state.mail);
 
+    // Tendé la identidad Firebase en segundo plano (no bloquea el dashboard).
+    // Si falla, el admin sigue funcionando igual.
+    iniciarSesionFirebase();
+
     AdminUI.setLoginStatus('login-status-2', '¡Bienvenido!', 'success');
 
     setTimeout(() => cargarDashboard(), 600);
+  }
+
+  // Identidad Firebase para el dueño (extra, NO bloqueante). Pide el custom token
+  // al backend y hace signInWithCustomToken, dejando al navegador listo para escribir
+  // Firestore. Si algo falla, se loguea un aviso y el admin sigue 100% normal.
+  async function iniciarSesionFirebase() {
+    try {
+      if (typeof firebase === 'undefined' || !firebase.auth) return;
+      const resp = await AdminAPI.obtenerTokenFirebase();
+      if (!resp || !resp.ok || !resp.firebase_token) {
+        console.warn('[Firebase] no se obtuvo token:', resp && resp.error);
+        return;
+      }
+      await firebase.auth().signInWithCustomToken(resp.firebase_token);
+      const u = firebase.auth().currentUser;
+      console.log('[Firebase] sesion iniciada:', u && u.uid);
+    } catch (e) {
+      console.warn('[Firebase] no se pudo iniciar sesion (el admin sigue normal):', e && e.message);
+    }
   }
 
   function volverALoginMail() {
