@@ -52,6 +52,12 @@ const AdminAPI = (function() {
       return llamar('auth_verificarCodigo', { mail, codigo });
     },
 
+    // Devuelve un custom token de Firebase para el usuario logueado.
+    // (lo usa el front para signInWithCustomToken y poder escribir Firestore)
+    obtenerTokenFirebase() {
+      return llamar('auth_obtenerTokenFirebase', {});
+    },
+
     /**
      * Auto-registro de cuenta nueva (sin auth previa).
      * Crea Cuenta + Usuario + Rol "dueño" en una sola operación.
