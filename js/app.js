@@ -65,6 +65,10 @@ const AdminApp = (function() {
         }
       }
 
+      // Tendé la identidad Firebase ahora que hay sesión (el admin no tiene login
+      // propio: llega ya logueado desde app.grancarta.com). No bloquea el dashboard.
+      iniciarSesionFirebase();
+
       await cargarDashboard();
     } else {
       // PUERTA ÚNICA: admin NO tiene login propio.
