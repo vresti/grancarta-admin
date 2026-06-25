@@ -3138,6 +3138,51 @@ const AdminApp = (function() {
     });
     state.editorContexto.stats.productos_disponibles = disponibles;
     renderEditor();
+
+    // ---- ESPEJO A FIRESTORE (patrón estrangulador) ----------------------
+    // Además de la planilla (ya escrita por GAS arriba), reflejamos el cambio
+    // en Firestore y rehorneamos, para que el comensal lo vea. Si algo falla,
+    // el admin sigue normal: la planilla ya quedó guardada.
+    try {
+      espejarEstadoProductoEnFirestore(idProducto, resp.estado_visibilidad, resp.disponible_hoy);
+    } catch (e) {
+      console.warn('[Firestore] no se pudo espejar el cambio (admin sigue normal):', e && e.message);
+    }
+  }
+
+  // Refleja el estado de un producto en Firestore y rehornea los locales que
+  // publican su carta. No bloquea la UI (corre asincrónico). Errores: warn.
+  async function espejarEstadoProductoEnFirestore(idProducto, estadoVisibilidad, disponibleHoy) {
+    if (!window.GCFirestore) { console.warn('[Firestore] módulo no cargado'); return; }
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+    const idCarta = ctx.idCarta || (ctx.carta && ctx.carta.Id_Carta);
+    const idEmpresa = ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa);
+    if (!idCarta || !idEmpresa) { console.warn('[Firestore] faltan idCarta/idEmpresa'); return; }
+
+    // 1) Escribir el estado del producto en la carta normalizada.
+    await window.GCFirestore.setEstadoProducto(idEmpresa, idCarta, idProducto, {
+      estado_visibilidad: estadoVisibilidad,
+      disponible_hoy: (estadoVisibilidad === 'visible')
+    });
+
+    // 2) Locales que publican ESTA carta (de las publicaciones en memoria).
+    const porLocal = (state.publicacionesPorEmpresa && state.publicacionesPorEmpresa[idEmpresa]) || {};
+    const localesConEstaCarta = [];
+    Object.keys(porLocal).forEach(function(idLocal) {
+      const pubs = porLocal[idLocal] || [];
+      const lapublica = pubs.some(function(p) { return p.Id_Carta === idCarta; });
+      if (lapublica) localesConEstaCarta.push(idLocal);
+    });
+
+    // 3) Rehornear esos locales (si la carta no está publicada en ninguno,
+    //    no hay nada que rehornear: el cambio queda en la carta normalizada).
+    if (localesConEstaCarta.length > 0) {
+      const r = await window.GCFirestore.hornearLocalesDeCarta(idEmpresa, idCarta, localesConEstaCarta);
+      console.log('[Firestore] rehorneado:', r.locales, 'local(es),', r.canales, 'canal(es).');
+    } else {
+      console.log('[Firestore] producto actualizado; la carta no está publicada en ningún local.');
+    }
   }
 
   async function eliminarProducto(idProducto, nombreProducto) {
