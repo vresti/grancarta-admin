@@ -3109,45 +3109,57 @@ const AdminApp = (function() {
     await recargarEditor();
   }
 
-  // v1.5: ahora recibe un ESTADO de 3 valores ('visible'|'agotado'|'oculto'),
-  // no un booleano. Lo manda el control de 3 botones (semáforo).
+  // v2 (25/6): FIRESTORE PRIMERO. El toggle ya NO espera a GAS — escribe Firestore
+  // y actualiza la pantalla al instante (el botón vuela). A GAS lo llamamos DESPUÉS,
+  // en segundo plano, solo para mantener la planilla sincronizada durante la transición.
+  // Rumbo: Firestore es la fuente de verdad; la planilla queda como respaldo en retirada.
   async function toggleDisponible(idProducto, estado) {
-    const resp = await AdminAPI.productoToggleDisponible(idProducto, estado);
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cambiar la visibilidad', 'error');
-      // Revertir visualmente recargando desde el backend
-      await recargarEditor();
-      return;
-    }
-    // Update silencioso del estado local sin recarga completa
-    state.editorContexto.secciones.forEach(function(s) {
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+
+    // 1) PANTALLA AL INSTANTE: actualizamos el estado local y redibujamos ya.
+    //    (estado = 'visible' | 'agotado' | 'oculto'; disponible solo si 'visible')
+    const disponibleHoy = (estado === 'visible');
+    ctx.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
         if (p.Id_Producto === idProducto) {
-          p.Estado_Visibilidad = resp.estado_visibilidad;
-          p.Disponible_Hoy = resp.disponible_hoy;
+          p.Estado_Visibilidad = estado;
+          p.Disponible_Hoy = disponibleHoy;
         }
       });
     });
-    // Actualizar stats: "disponibles hoy" = SOLO los visible
     let disponibles = 0;
-    state.editorContexto.secciones.forEach(function(s) {
+    ctx.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
         const ev = p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto');
         if (ev === 'visible') disponibles++;
       });
     });
-    state.editorContexto.stats.productos_disponibles = disponibles;
+    ctx.stats.productos_disponibles = disponibles;
     renderEditor();
 
-    // ---- ESPEJO A FIRESTORE (patrón estrangulador) ----------------------
-    // Además de la planilla (ya escrita por GAS arriba), reflejamos el cambio
-    // en Firestore y rehorneamos, para que el comensal lo vea. Si algo falla,
-    // el admin sigue normal: la planilla ya quedó guardada.
+    // 2) FIRESTORE (fuente de verdad): escribir el producto y rehornear. Esto es lo
+    //    que ve el comensal. Si falla, avisamos y revertimos la pantalla.
     try {
-      espejarEstadoProductoEnFirestore(idProducto, resp.estado_visibilidad, resp.disponible_hoy);
+      await espejarEstadoProductoEnFirestore(idProducto, estado, disponibleHoy);
     } catch (e) {
-      console.warn('[Firestore] no se pudo espejar el cambio (admin sigue normal):', e && e.message);
+      console.warn('[Firestore] no se pudo guardar el cambio:', e && e.message);
+      AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
+      await recargarEditor();   // revertir la pantalla al estado real
+      return;
     }
+
+    // 3) GAS EN SEGUNDO PLANO: mantener la planilla sincronizada, sin bloquear.
+    //    Si GAS tarda o falla, no afecta al usuario ni a Firestore (que ya guardó).
+    AdminAPI.productoToggleDisponible(idProducto, estado)
+      .then(function(resp) {
+        if (!resp || !resp.ok) {
+          console.warn('[GAS] la planilla no se actualizó (Firestore sí):', resp && resp.error);
+        }
+      })
+      .catch(function(err) {
+        console.warn('[GAS] error al sincronizar la planilla (Firestore ya guardó):', err && err.message);
+      });
   }
 
   // Refleja el estado de un producto en Firestore y rehornea los locales que
