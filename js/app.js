@@ -3051,14 +3051,8 @@ const AdminApp = (function() {
     const descripcion = document.getElementById('producto-descripcion').value.trim();
     const precio = parseFloat(document.getElementById('producto-precio').value);
 
-    if (nombre.length < 1) {
-      AdminUI.toast('Pon un nombre al producto', 'error');
-      return;
-    }
-    if (isNaN(precio) || precio < 0) {
-      AdminUI.toast('Pon un precio válido', 'error');
-      return;
-    }
+    if (nombre.length < 1) { AdminUI.toast('Pon un nombre al producto', 'error'); return; }
+    if (isNaN(precio) || precio < 0) { AdminUI.toast('Pon un precio válido', 'error'); return; }
 
     const alergenos = [];
     document.querySelectorAll('[data-alergeno]').forEach(function(cb) {
@@ -3072,7 +3066,7 @@ const AdminApp = (function() {
     };
     const etiquetasJson = JSON.stringify(etiquetasObj);
 
-    // payload para GAS (la planilla quiere etiquetas_json string)
+    // GAS quiere etiquetas_json (string). Mandamos eso.
     const payload = {
       nombre: nombre,
       descripcion: descripcion,
@@ -3083,106 +3077,67 @@ const AdminApp = (function() {
     const ctx = state.editorContexto;
     const idEmpresa = (ctx && (ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa)));
     const idCarta   = (ctx && (ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta)));
-
     const esEditar = !!state.productoEditarId;
 
-    // =====================================================================
-    // CASO A — EDITAR (el producto ya existe): FIRESTORE PRIMERO (vuela).
-    // =====================================================================
-    if (esEditar) {
-      const idProducto = state.productoEditarId;
-
-      // 1) Pantalla al instante: actualizar el producto en memoria + cerrar modal.
-      let idSeccionDelProd = null;
-      ctx.secciones.forEach(function(s) {
-        s.productos.forEach(function(p) {
-          if (p.Id_Producto === idProducto) {
-            p.Nombre = nombre;
-            p.Descripcion = descripcion;
-            p.Precio = precio;
-            p.Etiquetas = etiquetasObj;
-            idSeccionDelProd = p.Id_Seccion;
-          }
-        });
-      });
-      cerrarModales();
-      renderEditor();
-      AdminUI.toast('Producto actualizado', 'success');
-
-      // 2) Firestore (fuente de verdad) + rehornear. Si falla, avisar y recargar.
-      try {
-        if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
-        if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
-        await window.GCFirestore.actualizarProducto(idEmpresa, idCarta, idProducto, {
-          nombre: nombre,
-          descripcion: descripcion,
-          precio: precio,
-          etiquetas: etiquetasObj
-        });
-        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
-      } catch (e) {
-        console.warn('[Firestore] no se pudo guardar la edición:', e && e.message);
-        AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
-        await recargarEditor();
-        return;
-      }
-
-      // 3) GAS en segundo plano: sincronizar la planilla sin bloquear.
-      AdminAPI.productoActualizar(idProducto, payload)
-        .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] planilla no actualizada (Firestore sí):', resp && resp.error); })
-        .catch(function(err){ console.warn('[GAS] error sincronizando planilla (Firestore ya guardó):', err && err.message); });
-      return;
-    }
-
-    // =====================================================================
-    // CASO B — CREAR (producto nuevo): GAS PRIMERO (genera el ID),
-    //          luego espejar a Firestore con ese ID + rehornear.
-    // =====================================================================
     const btn = document.getElementById('btn-producto-guardar');
     btn.disabled = true;
-    btn.textContent = 'Creando…';
+    btn.textContent = 'Guardando…';
 
-    payload.id_seccion = state.productoSeccionId;
+    // ---- PATRÓN ESTABLE: GAS PRIMERO (pantalla y planilla en sync) ----
     let resp;
     try {
-      resp = await AdminAPI.productoCrear(payload);
+      if (esEditar) {
+        resp = await AdminAPI.productoActualizar(state.productoEditarId, payload);
+      } else {
+        payload.id_seccion = state.productoSeccionId;
+        resp = await AdminAPI.productoCrear(payload);
+      }
     } catch (e) {
       resp = { ok: false, error: (e && e.message) };
     }
 
     btn.disabled = false;
-    btn.textContent = 'Crear producto';
+    btn.textContent = esEditar ? 'Guardar cambios' : 'Crear producto';
 
     if (!resp || !resp.ok) {
-      AdminUI.toast((resp && resp.error) || 'No pudimos crear el producto', 'error');
+      AdminUI.toast((resp && resp.error) || 'No pudimos guardar', 'error');
       return;
     }
 
-    // GAS devolvió el producto con su ID. Lo espejamos en Firestore.
-    const prod = resp.producto || {};
-    const idProductoNuevo = prod.Id_Producto;
-    AdminUI.toast('Producto creado', 'success');
+    AdminUI.toast(esEditar ? 'Producto actualizado' : 'Producto creado', 'success');
     cerrarModales();
 
+    // ---- ESPEJO A FIRESTORE (después de GAS) + rehornear ----
     try {
-      if (window.GCFirestore && idEmpresa && idCarta && idProductoNuevo) {
-        await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
-          id_seccion: prod.Id_Seccion || state.productoSeccionId || '',
-          nombre: prod.Nombre || nombre,
-          descripcion: prod.Descripcion || descripcion,
-          precio: (prod.Precio !== undefined ? prod.Precio : precio),
-          foto_url: prod.Foto_Url || '',
-          etiquetas: etiquetasObj,
-          estado_visibilidad: 'visible',
-          disponible_hoy: true,
-          orden: prod.Orden || 0
-        });
+      if (window.GCFirestore && idEmpresa && idCarta) {
+        if (esEditar) {
+          await window.GCFirestore.actualizarProducto(idEmpresa, idCarta, state.productoEditarId, {
+            nombre: nombre, descripcion: descripcion, precio: precio, etiquetas: etiquetasObj
+          });
+        } else {
+          const prod = resp.producto || {};
+          const idProductoNuevo = prod.Id_Producto;
+          if (idProductoNuevo) {
+            await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
+              id_seccion: prod.Id_Seccion || state.productoSeccionId || '',
+              nombre: prod.Nombre || nombre,
+              descripcion: prod.Descripcion || descripcion,
+              precio: (prod.Precio !== undefined ? prod.Precio : precio),
+              foto_url: prod.Foto_Url || '',
+              etiquetas: etiquetasObj,
+              estado_visibilidad: 'visible',
+              disponible_hoy: true,
+              orden: prod.Orden || 0
+            });
+          }
+        }
         await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
       }
     } catch (e) {
-      console.warn('[Firestore] producto creado en planilla pero no espejado:', e && e.message);
+      console.warn('[Firestore] no se pudo espejar el producto (admin sigue normal):', e && e.message);
     }
 
+    // Recargar el editor desde GAS (fuente de la pantalla en el patrón estable).
     await recargarEditor();
   }
 
@@ -3212,57 +3167,41 @@ const AdminApp = (function() {
     await recargarEditor();
   }
 
-  // v2 (25/6): FIRESTORE PRIMERO. El toggle ya NO espera a GAS — escribe Firestore
-  // y actualiza la pantalla al instante (el botón vuela). A GAS lo llamamos DESPUÉS,
-  // en segundo plano, solo para mantener la planilla sincronizada durante la transición.
-  // Rumbo: Firestore es la fuente de verdad; la planilla queda como respaldo en retirada.
+  // v3 (26/6): PATRÓN ESTABLE — GAS primero (mantiene pantalla y planilla en sync),
+  // y DESPUÉS espejamos a Firestore + rehorneamos para que el comensal lo vea.
+  // (El "Firestore primero" se retomará cuando la LECTURA del admin venga de Firestore.)
   async function toggleDisponible(idProducto, estado) {
-    const ctx = state.editorContexto;
-    if (!ctx) return;
-
-    // 1) PANTALLA AL INSTANTE: actualizamos el estado local y redibujamos ya.
-    //    (estado = 'visible' | 'agotado' | 'oculto'; disponible solo si 'visible')
-    const disponibleHoy = (estado === 'visible');
-    ctx.secciones.forEach(function(s) {
+    const resp = await AdminAPI.productoToggleDisponible(idProducto, estado);
+    if (!resp || !resp.ok) {
+      AdminUI.toast((resp && resp.error) || 'No pudimos cambiar la visibilidad', 'error');
+      await recargarEditor();
+      return;
+    }
+    // Update silencioso del estado local (desde lo que confirmó GAS) sin recarga completa.
+    state.editorContexto.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
         if (p.Id_Producto === idProducto) {
-          p.Estado_Visibilidad = estado;
-          p.Disponible_Hoy = disponibleHoy;
+          p.Estado_Visibilidad = resp.estado_visibilidad;
+          p.Disponible_Hoy = resp.disponible_hoy;
         }
       });
     });
     let disponibles = 0;
-    ctx.secciones.forEach(function(s) {
+    state.editorContexto.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
         const ev = p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto');
         if (ev === 'visible') disponibles++;
       });
     });
-    ctx.stats.productos_disponibles = disponibles;
+    state.editorContexto.stats.productos_disponibles = disponibles;
     renderEditor();
 
-    // 2) FIRESTORE (fuente de verdad): escribir el producto y rehornear. Esto es lo
-    //    que ve el comensal. Si falla, avisamos y revertimos la pantalla.
+    // Espejo a Firestore (después de GAS) + rehornear. Si falla, warn (planilla ya guardó).
     try {
-      await espejarEstadoProductoEnFirestore(idProducto, estado, disponibleHoy);
+      await espejarEstadoProductoEnFirestore(idProducto, resp.estado_visibilidad, resp.disponible_hoy);
     } catch (e) {
-      console.warn('[Firestore] no se pudo guardar el cambio:', e && e.message);
-      AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
-      await recargarEditor();   // revertir la pantalla al estado real
-      return;
+      console.warn('[Firestore] no se pudo espejar el toggle (admin sigue normal):', e && e.message);
     }
-
-    // 3) GAS EN SEGUNDO PLANO: mantener la planilla sincronizada, sin bloquear.
-    //    Si GAS tarda o falla, no afecta al usuario ni a Firestore (que ya guardó).
-    AdminAPI.productoToggleDisponible(idProducto, estado)
-      .then(function(resp) {
-        if (!resp || !resp.ok) {
-          console.warn('[GAS] la planilla no se actualizó (Firestore sí):', resp && resp.error);
-        }
-      })
-      .catch(function(err) {
-        console.warn('[GAS] error al sincronizar la planilla (Firestore ya guardó):', err && err.message);
-      });
   }
 
   // Refleja el estado de un producto en Firestore y rehornea los locales que
