@@ -2651,7 +2651,7 @@ const AdminApp = (function() {
       stats: datos.stats || { cantidad_secciones: 0, cantidad_productos: 0, productos_disponibles: 0 }
     };
 
-    document.getElementById('editor-titulo').textContent = resp.carta.Nombre;
+    document.getElementById('editor-titulo').textContent = datos.carta.Nombre;
     document.getElementById('editor-subtitulo').textContent =
       (state.cartasContexto ? state.cartasContexto.nombreLocal + ' · ' + state.cartasContexto.nombreEmpresa : '');
 
@@ -2659,7 +2659,7 @@ const AdminApp = (function() {
     // Solo "activa" = "lista para publicar" puede publicarse.
     // borrador → no se puede (todavía está en construcción)
     // archivada → no se puede (descartada)
-    actualizarBotonPublicarEnEditor(resp.carta);
+    actualizarBotonPublicarEnEditor(datos.carta);
 
     cambiarTabEditor('contenido');
     AdminUI.mostrarPantalla('screen-editor');
