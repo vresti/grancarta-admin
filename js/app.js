@@ -3076,79 +3076,103 @@ const AdminApp = (function() {
       picante: document.getElementById('producto-picante').checked
     };
     const etiquetasJson = JSON.stringify(etiquetasObj);
-
-    // GAS quiere etiquetas_json (string). Mandamos eso.
-    const payload = {
-      nombre: nombre,
-      descripcion: descripcion,
-      precio: precio,
-      etiquetas_json: etiquetasJson
-    };
+    const payloadGas = { nombre: nombre, descripcion: descripcion, precio: precio, etiquetas_json: etiquetasJson };
 
     const ctx = state.editorContexto;
     const idEmpresa = (ctx && (ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa)));
     const idCarta   = (ctx && (ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta)));
     const esEditar = !!state.productoEditarId;
 
+    // =====================================================================
+    // CASO A — EDITAR: FIRESTORE PRIMERO + cero recarga (vuela).
+    // =====================================================================
+    if (esEditar) {
+      const idProducto = state.productoEditarId;
+
+      // 1) Pantalla al instante (memoria) + cerrar modal.
+      ctx.secciones.forEach(function(s) {
+        s.productos.forEach(function(p) {
+          if (p.Id_Producto === idProducto) {
+            p.Nombre = nombre; p.Descripcion = descripcion; p.Precio = precio; p.Etiquetas = etiquetasObj;
+          }
+        });
+      });
+      cerrarModales();
+      renderEditor();
+      AdminUI.toast('Producto actualizado', 'success');
+
+      // 2) Firestore (fuente de verdad) + rehornear.
+      try {
+        if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+        if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+        await window.GCFirestore.actualizarProducto(idEmpresa, idCarta, idProducto, {
+          nombre: nombre, descripcion: descripcion, precio: precio, etiquetas: etiquetasObj
+        });
+        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+      } catch (e) {
+        console.warn('[Firestore] no se pudo guardar la edición:', e && e.message);
+        AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
+        await recargarEditor();
+        return;
+      }
+
+      // 3) GAS en segundo plano.
+      AdminAPI.productoActualizar(idProducto, payloadGas)
+        .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] planilla no actualizada (Firestore sí):', resp && resp.error); })
+        .catch(function(err){ console.warn('[GAS] error sincronizando (Firestore ya guardó):', err && err.message); });
+      return;
+    }
+
+    // =====================================================================
+    // CASO B — CREAR: GAS PRIMERO (genera el ID con su contador), luego
+    //          espejar a Firestore con ese ID + rehornear. (El ID es de GAS.)
+    // =====================================================================
     const btn = document.getElementById('btn-producto-guardar');
     btn.disabled = true;
-    btn.textContent = 'Guardando…';
+    btn.textContent = 'Creando…';
 
-    // ---- PATRÓN ESTABLE: GAS PRIMERO (pantalla y planilla en sync) ----
+    payloadGas.id_seccion = state.productoSeccionId;
     let resp;
     try {
-      if (esEditar) {
-        resp = await AdminAPI.productoActualizar(state.productoEditarId, payload);
-      } else {
-        payload.id_seccion = state.productoSeccionId;
-        resp = await AdminAPI.productoCrear(payload);
-      }
+      resp = await AdminAPI.productoCrear(payloadGas);
     } catch (e) {
       resp = { ok: false, error: (e && e.message) };
     }
 
     btn.disabled = false;
-    btn.textContent = esEditar ? 'Guardar cambios' : 'Crear producto';
+    btn.textContent = 'Crear producto';
 
     if (!resp || !resp.ok) {
-      AdminUI.toast((resp && resp.error) || 'No pudimos guardar', 'error');
+      AdminUI.toast((resp && resp.error) || 'No pudimos crear el producto', 'error');
       return;
     }
 
-    AdminUI.toast(esEditar ? 'Producto actualizado' : 'Producto creado', 'success');
+    AdminUI.toast('Producto creado', 'success');
     cerrarModales();
 
-    // ---- ESPEJO A FIRESTORE (después de GAS) + rehornear ----
+    // Espejar a Firestore con el ID que dio GAS + rehornear.
     try {
-      if (window.GCFirestore && idEmpresa && idCarta) {
-        if (esEditar) {
-          await window.GCFirestore.actualizarProducto(idEmpresa, idCarta, state.productoEditarId, {
-            nombre: nombre, descripcion: descripcion, precio: precio, etiquetas: etiquetasObj
-          });
-        } else {
-          const prod = resp.producto || {};
-          const idProductoNuevo = prod.Id_Producto;
-          if (idProductoNuevo) {
-            await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
-              id_seccion: prod.Id_Seccion || state.productoSeccionId || '',
-              nombre: prod.Nombre || nombre,
-              descripcion: prod.Descripcion || descripcion,
-              precio: (prod.Precio !== undefined ? prod.Precio : precio),
-              foto_url: prod.Foto_Url || '',
-              etiquetas: etiquetasObj,
-              estado_visibilidad: 'visible',
-              disponible_hoy: true,
-              orden: prod.Orden || 0
-            });
-          }
-        }
+      const prod = resp.producto || {};
+      const idProductoNuevo = prod.Id_Producto;
+      if (window.GCFirestore && idEmpresa && idCarta && idProductoNuevo) {
+        await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
+          id_seccion: prod.Id_Seccion || state.productoSeccionId || '',
+          nombre: prod.Nombre || nombre,
+          descripcion: prod.Descripcion || descripcion,
+          precio: (prod.Precio !== undefined ? prod.Precio : precio),
+          foto_url: prod.Foto_Url || '',
+          etiquetas: etiquetasObj,
+          estado_visibilidad: 'visible',
+          disponible_hoy: true,
+          orden: prod.Orden || 0
+        });
         await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
       }
     } catch (e) {
-      console.warn('[Firestore] no se pudo espejar el producto (admin sigue normal):', e && e.message);
+      console.warn('[Firestore] producto creado en planilla pero no espejado:', e && e.message);
     }
 
-    // Recargar el editor desde GAS (fuente de la pantalla en el patrón estable).
+    // Recargar desde Firestore (rápido) para que el nuevo producto aparezca con su ID real.
     await recargarEditor();
   }
 
@@ -3178,41 +3202,47 @@ const AdminApp = (function() {
     await recargarEditor();
   }
 
-  // v3 (26/6): PATRÓN ESTABLE — GAS primero (mantiene pantalla y planilla en sync),
-  // y DESPUÉS espejamos a Firestore + rehorneamos para que el comensal lo vea.
-  // (El "Firestore primero" se retomará cuando la LECTURA del admin venga de Firestore.)
+  // v4 (27/6): VOLVER A VOLAR — Firestore PRIMERO + cero recarga.
+  // Ahora que el editor LEE de Firestore, escribir Firestore primero es SEGURO
+  // (la pantalla lee la misma fuente que escribimos; no hay "pelea de mundos").
+  // 1) pantalla al instante (memoria), 2) Firestore + rehornear, 3) GAS atrás.
   async function toggleDisponible(idProducto, estado) {
-    const resp = await AdminAPI.productoToggleDisponible(idProducto, estado);
-    if (!resp || !resp.ok) {
-      AdminUI.toast((resp && resp.error) || 'No pudimos cambiar la visibilidad', 'error');
-      await recargarEditor();
-      return;
-    }
-    // Update silencioso del estado local (desde lo que confirmó GAS) sin recarga completa.
-    state.editorContexto.secciones.forEach(function(s) {
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+    const disponibleHoy = (estado === 'visible');
+
+    // 1) PANTALLA AL INSTANTE (memoria, sin recarga). El botón vuela.
+    ctx.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
         if (p.Id_Producto === idProducto) {
-          p.Estado_Visibilidad = resp.estado_visibilidad;
-          p.Disponible_Hoy = resp.disponible_hoy;
+          p.Estado_Visibilidad = estado;
+          p.Disponible_Hoy = disponibleHoy;
         }
       });
     });
     let disponibles = 0;
-    state.editorContexto.secciones.forEach(function(s) {
+    ctx.secciones.forEach(function(s) {
       s.productos.forEach(function(p) {
-        const ev = p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto');
-        if (ev === 'visible') disponibles++;
+        if ((p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto')) === 'visible') disponibles++;
       });
     });
-    state.editorContexto.stats.productos_disponibles = disponibles;
+    if (ctx.stats) ctx.stats.productos_disponibles = disponibles;
     renderEditor();
 
-    // Espejo a Firestore (después de GAS) + rehornear. Si falla, warn (planilla ya guardó).
+    // 2) FIRESTORE (fuente de verdad) + rehornear. Si falla, avisar y revertir leyendo FS.
     try {
-      await espejarEstadoProductoEnFirestore(idProducto, resp.estado_visibilidad, resp.disponible_hoy);
+      await espejarEstadoProductoEnFirestore(idProducto, estado, disponibleHoy);
     } catch (e) {
-      console.warn('[Firestore] no se pudo espejar el toggle (admin sigue normal):', e && e.message);
+      console.warn('[Firestore] no se pudo guardar el toggle:', e && e.message);
+      AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
+      await recargarEditor();   // recarga desde Firestore (rápido) para volver al estado real
+      return;
     }
+
+    // 3) GAS en segundo plano: sincroniza la planilla sin bloquear (respaldo en retirada).
+    AdminAPI.productoToggleDisponible(idProducto, estado)
+      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] planilla no actualizada (Firestore sí):', resp && resp.error); })
+      .catch(function(err){ console.warn('[GAS] error sincronizando planilla (Firestore ya guardó):', err && err.message); });
   }
 
   // Refleja el estado de un producto en Firestore y rehornea los locales que
