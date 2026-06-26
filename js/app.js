@@ -3064,40 +3064,143 @@ const AdminApp = (function() {
     document.querySelectorAll('[data-alergeno]').forEach(function(cb) {
       if (cb.checked) alergenos.push(cb.dataset.alergeno);
     });
-
-    const payload = {
-      nombre: nombre,
-      descripcion: descripcion,
-      precio: precio,
+    const etiquetasObj = {
       alergenos: alergenos,
       vegetariano: document.getElementById('producto-vegetariano').checked,
       sin_tacc: document.getElementById('producto-sin-tacc').checked,
       picante: document.getElementById('producto-picante').checked
     };
+    const etiquetasJson = JSON.stringify(etiquetasObj);
 
-    const btn = document.getElementById('btn-producto-guardar');
-    btn.disabled = true;
-    btn.textContent = 'Guardando…';
+    // payload para GAS (la planilla quiere etiquetas_json string)
+    const payload = {
+      nombre: nombre,
+      descripcion: descripcion,
+      precio: precio,
+      etiquetas_json: etiquetasJson
+    };
 
-    let resp;
-    if (state.productoEditarId) {
-      resp = await AdminAPI.productoActualizar(state.productoEditarId, payload);
-    } else {
-      payload.id_seccion = state.productoSeccionId;
-      resp = await AdminAPI.productoCrear(payload);
-    }
+    const ctx = state.editorContexto;
+    const idEmpresa = (ctx && (ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa)));
+    const idCarta   = (ctx && (ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta)));
 
-    btn.disabled = false;
-    btn.textContent = state.productoEditarId ? 'Guardar cambios' : 'Crear producto';
+    const esEditar = !!state.productoEditarId;
 
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos guardar', 'error');
+    // =====================================================================
+    // CASO A — EDITAR (el producto ya existe): FIRESTORE PRIMERO (vuela).
+    // =====================================================================
+    if (esEditar) {
+      const idProducto = state.productoEditarId;
+
+      // 1) Pantalla al instante: actualizar el producto en memoria + cerrar modal.
+      let idSeccionDelProd = null;
+      ctx.secciones.forEach(function(s) {
+        s.productos.forEach(function(p) {
+          if (p.Id_Producto === idProducto) {
+            p.Nombre = nombre;
+            p.Descripcion = descripcion;
+            p.Precio = precio;
+            p.Etiquetas = etiquetasObj;
+            idSeccionDelProd = p.Id_Seccion;
+          }
+        });
+      });
+      cerrarModales();
+      renderEditor();
+      AdminUI.toast('Producto actualizado', 'success');
+
+      // 2) Firestore (fuente de verdad) + rehornear. Si falla, avisar y recargar.
+      try {
+        if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+        if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+        await window.GCFirestore.actualizarProducto(idEmpresa, idCarta, idProducto, {
+          nombre: nombre,
+          descripcion: descripcion,
+          precio: precio,
+          etiquetas: etiquetasObj
+        });
+        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+      } catch (e) {
+        console.warn('[Firestore] no se pudo guardar la edición:', e && e.message);
+        AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
+        await recargarEditor();
+        return;
+      }
+
+      // 3) GAS en segundo plano: sincronizar la planilla sin bloquear.
+      AdminAPI.productoActualizar(idProducto, payload)
+        .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] planilla no actualizada (Firestore sí):', resp && resp.error); })
+        .catch(function(err){ console.warn('[GAS] error sincronizando planilla (Firestore ya guardó):', err && err.message); });
       return;
     }
 
-    AdminUI.toast(state.productoEditarId ? 'Producto actualizado' : 'Producto creado', 'success');
+    // =====================================================================
+    // CASO B — CREAR (producto nuevo): GAS PRIMERO (genera el ID),
+    //          luego espejar a Firestore con ese ID + rehornear.
+    // =====================================================================
+    const btn = document.getElementById('btn-producto-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+
+    payload.id_seccion = state.productoSeccionId;
+    let resp;
+    try {
+      resp = await AdminAPI.productoCrear(payload);
+    } catch (e) {
+      resp = { ok: false, error: (e && e.message) };
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Crear producto';
+
+    if (!resp || !resp.ok) {
+      AdminUI.toast((resp && resp.error) || 'No pudimos crear el producto', 'error');
+      return;
+    }
+
+    // GAS devolvió el producto con su ID. Lo espejamos en Firestore.
+    const prod = resp.producto || {};
+    const idProductoNuevo = prod.Id_Producto;
+    AdminUI.toast('Producto creado', 'success');
     cerrarModales();
+
+    try {
+      if (window.GCFirestore && idEmpresa && idCarta && idProductoNuevo) {
+        await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
+          id_seccion: prod.Id_Seccion || state.productoSeccionId || '',
+          nombre: prod.Nombre || nombre,
+          descripcion: prod.Descripcion || descripcion,
+          precio: (prod.Precio !== undefined ? prod.Precio : precio),
+          foto_url: prod.Foto_Url || '',
+          etiquetas: etiquetasObj,
+          estado_visibilidad: 'visible',
+          disponible_hoy: true,
+          orden: prod.Orden || 0
+        });
+        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+      }
+    } catch (e) {
+      console.warn('[Firestore] producto creado en planilla pero no espejado:', e && e.message);
+    }
+
     await recargarEditor();
+  }
+
+  // Rehornea los locales que publican una carta dada (helper compartido).
+  async function rehornearLocalesDeLaCarta(idEmpresa, idCarta) {
+    if (!window.GCFirestore) return;
+    const porLocal = (state.publicacionesPorEmpresa && state.publicacionesPorEmpresa[idEmpresa]) || {};
+    const locales = [];
+    Object.keys(porLocal).forEach(function(idLocal) {
+      const pubs = porLocal[idLocal] || [];
+      if (pubs.some(function(p){ return p.Id_Carta === idCarta; })) locales.push(idLocal);
+    });
+    if (locales.length > 0) {
+      const r = await window.GCFirestore.hornearLocalesDeCarta(idEmpresa, idCarta, locales);
+      console.log('[Firestore] rehorneado:', r.locales, 'local(es),', r.canales, 'canal(es).');
+    } else {
+      console.log('[Firestore] cambio guardado; la carta no está publicada en ningún local.');
+    }
   }
 
   async function ordenarProducto(idProducto, direccion) {

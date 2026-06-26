@@ -40,6 +40,31 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Actualiza campos de un producto EXISTENTE (editar): nombre, descripcion,
+  // precio, etiquetas. ruta: empresas/{emp}/cartas/{carta}/productos/{prod}
+  // ---------------------------------------------------------------------------
+  async function actualizarProducto(idEmpresa, idCarta, idProducto, campos) {
+    const ref = db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta)
+      .collection('productos').doc(idProducto);
+    await ref.update(campos);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Crea un producto NUEVO en Firestore con el ID que ya generó GAS.
+  // (GAS es la fuente del ID por su contador con LockService; acá solo
+  //  espejamos el documento con ese mismo ID para que el cliente lo vea.)
+  // ---------------------------------------------------------------------------
+  async function crearProducto(idEmpresa, idCarta, idProducto, datos) {
+    const ref = db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta)
+      .collection('productos').doc(idProducto);
+    await ref.set(datos);   // set: crea el doc nuevo con el ID dado
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -137,6 +162,8 @@
   // Exponer el módulo
   window.GCFirestore = {
     setEstadoProducto: setEstadoProducto,
+    actualizarProducto: actualizarProducto,
+    crearProducto: crearProducto,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
