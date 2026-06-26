@@ -3242,23 +3242,55 @@ const AdminApp = (function() {
   async function eliminarProducto(idProducto, nombreProducto) {
     const confirmar = await AdminUI.confirm({
       title: '¿Eliminar producto?',
-      message: '"' + nombreProducto + '" se va a eliminar de esta carta.',
+      message: '"' + nombreProducto + '" se va a eliminar definitivamente de esta carta.',
       okLabel: 'Eliminar',
       cancelLabel: 'Cancelar'
     });
     if (!confirmar) return;
 
-    AdminUI.setLoading(true);
-    const resp = await AdminAPI.productoEliminar(idProducto);
-    AdminUI.setLoading(false);
+    const ctx = state.editorContexto;
+    const idEmpresa = (ctx && (ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa)));
+    const idCarta   = (ctx && (ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta)));
 
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos eliminar', 'error');
+    // 1) FIRESTORE PRIMERO: borrar el doc (definitivo). Es la fuente de verdad.
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+      await window.GCFirestore.eliminarProducto(idEmpresa, idCarta, idProducto);
+    } catch (e) {
+      console.warn('[Firestore] no se pudo eliminar:', e && e.message);
+      AdminUI.toast('No pudimos eliminar el producto. Reintentá.', 'error');
       return;
     }
 
+    // 2) Sacar de la pantalla al instante (sin esperar recarga de GAS).
+    ctx.secciones.forEach(function(s) {
+      s.productos = s.productos.filter(function(p) { return p.Id_Producto !== idProducto; });
+    });
+    let disponibles = 0;
+    ctx.secciones.forEach(function(s) {
+      s.productos.forEach(function(p) {
+        const ev = p.Estado_Visibilidad || (p.Disponible_Hoy ? 'visible' : 'oculto');
+        if (ev === 'visible') disponibles++;
+      });
+    });
+    if (ctx.stats) ctx.stats.productos_disponibles = disponibles;
+    renderEditor();
     AdminUI.toast('Producto eliminado', 'success');
-    await recargarEditor();
+
+    // 3) Rehornear (el comensal deja de verlo) — espejo a menus_publicados.
+    try {
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+    } catch (e) {
+      console.warn('[Firestore] no se pudo rehornear tras eliminar:', e && e.message);
+    }
+
+    // 4) GAS en segundo plano: marcar eliminado en la planilla (respaldo en retirada).
+    //    (Nota: el backend hoy escribe en una columna 'Estado' que la hoja Productos
+    //     no tiene, así que esto puede no surtir efecto; Firestore ya es la verdad.)
+    AdminAPI.productoEliminar(idProducto)
+      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] no marcó eliminado (Firestore sí):', resp && resp.error); })
+      .catch(function(err){ console.warn('[GAS] error al sincronizar borrado (Firestore ya borró):', err && err.message); });
   }
 
   // ============================================================

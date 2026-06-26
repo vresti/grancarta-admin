@@ -65,6 +65,18 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Elimina FÍSICAMENTE un producto de Firestore (delete del doc). Definitivo.
+  // ruta: empresas/{emp}/cartas/{carta}/productos/{prod}
+  // ---------------------------------------------------------------------------
+  async function eliminarProducto(idEmpresa, idCarta, idProducto) {
+    const ref = db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta)
+      .collection('productos').doc(idProducto);
+    await ref.delete();
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -164,6 +176,7 @@
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,
     crearProducto: crearProducto,
+    eliminarProducto: eliminarProducto,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
