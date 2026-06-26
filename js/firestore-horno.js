@@ -77,6 +77,75 @@
   }
 
   // ---------------------------------------------------------------------------
+  // LECTURA del editor: lee carta + secciones + TODOS los productos de Firestore
+  // y devuelve la forma EXACTA que espera renderEditor (campos con Mayúscula).
+  // A diferencia del horno, NO filtra por estado (el editor gestiona todos).
+  // ---------------------------------------------------------------------------
+  async function leerCartaCompleta(idEmpresa, idCarta) {
+    const D = db();
+    const cartaRef = D.collection('empresas').doc(idEmpresa).collection('cartas').doc(idCarta);
+    const cartaSnap = await cartaRef.get();
+    if (!cartaSnap.exists) throw new Error('Carta no encontrada en Firestore: ' + idCarta);
+    const c = cartaSnap.data();
+
+    const seccSnap = await cartaRef.collection('secciones').get();
+    const prodSnap = await cartaRef.collection('productos').get();
+
+    // Productos por sección (forma del front), sin filtrar estado.
+    const productos = prodSnap.docs.map(function (d) {
+      const p = d.data();
+      return {
+        Id_Producto: d.id,
+        Id_Seccion: p.id_seccion || '',
+        Nombre: p.nombre || '',
+        Descripcion: p.descripcion || '',
+        Precio: (p.precio === undefined || p.precio === null) ? 0 : p.precio,
+        Estado_Visibilidad: p.estado_visibilidad || (p.disponible_hoy ? 'visible' : 'oculto'),
+        Disponible_Hoy: (p.estado_visibilidad ? p.estado_visibilidad === 'visible' : !!p.disponible_hoy),
+        Etiquetas: p.etiquetas || { alergenos: [], vegetariano: false, sin_tacc: false, picante: false },
+        Orden: p.orden || 0
+      };
+    });
+
+    const secciones = seccSnap.docs.map(function (d) {
+      const s = d.data();
+      const items = productos
+        .filter(function (pr) { return pr.Id_Seccion === d.id; })
+        .sort(function (a, b) { return (a.Orden || 0) - (b.Orden || 0); });
+      return {
+        Id_Seccion: d.id,
+        Nombre: s.nombre || '',
+        Descripcion: s.descripcion || '',
+        Orden: s.orden || 0,
+        productos: items
+      };
+    }).sort(function (a, b) { return (a.Orden || 0) - (b.Orden || 0); });
+
+    const cantidadProductos = productos.length;
+    const disponibles = productos.filter(function (p) { return p.Estado_Visibilidad === 'visible'; }).length;
+
+    const carta = {
+      Id_Carta: idCarta,
+      Id_Empresa: c.id_empresa || idEmpresa,
+      Nombre: c.nombre || '',
+      Descripcion: c.descripcion || '',
+      Redondeo: (c.redondeo === undefined || c.redondeo === null) ? '10' : c.redondeo,
+      Estado: c.estado || 'activa',
+      Template: c.template || ''
+    };
+
+    return {
+      carta: carta,
+      secciones: secciones,
+      stats: {
+        cantidad_secciones: secciones.length,
+        cantidad_productos: cantidadProductos,
+        productos_disponibles: disponibles
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -177,6 +246,7 @@
     actualizarProducto: actualizarProducto,
     crearProducto: crearProducto,
     eliminarProducto: eliminarProducto,
+    leerCartaCompleta: leerCartaCompleta,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };

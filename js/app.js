@@ -2628,20 +2628,27 @@ const AdminApp = (function() {
   // --- Editor (Sesión B: secciones y productos) ---
 
   async function abrirEditorCarta(idCarta) {
+    const idEmpresa = state.cartasContexto && state.cartasContexto.idEmpresa;
     AdminUI.setLoading(true);
-    const resp = await AdminAPI.cartaObtenerCompleta(idCarta);
-    AdminUI.setLoading(false);
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cargar la carta', 'error');
+    let datos;
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa) throw new Error('falta idEmpresa en el contexto');
+      datos = await window.GCFirestore.leerCartaCompleta(idEmpresa, idCarta);
+    } catch (e) {
+      AdminUI.setLoading(false);
+      console.error('[Firestore] error leyendo la carta:', e && e.message);
+      AdminUI.toast('No pudimos cargar la carta', 'error');
       return;
     }
+    AdminUI.setLoading(false);
 
     state.editorContexto = {
       idCarta: idCarta,
-      carta: resp.carta,
-      secciones: resp.secciones || [],
-      stats: resp.stats || { cantidad_secciones: 0, cantidad_productos: 0, productos_disponibles: 0 }
+      idEmpresa: idEmpresa,
+      carta: datos.carta,
+      secciones: datos.secciones || [],
+      stats: datos.stats || { cantidad_secciones: 0, cantidad_productos: 0, productos_disponibles: 0 }
     };
 
     document.getElementById('editor-titulo').textContent = resp.carta.Nombre;
@@ -2661,16 +2668,20 @@ const AdminApp = (function() {
 
   async function recargarEditor() {
     if (!state.editorContexto) return;
-    const resp = await AdminAPI.cartaObtenerCompleta(state.editorContexto.idCarta);
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos recargar', 'error');
-      return;
+    const idEmpresa = state.editorContexto.idEmpresa || (state.cartasContexto && state.cartasContexto.idEmpresa);
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa) throw new Error('falta idEmpresa');
+      const datos = await window.GCFirestore.leerCartaCompleta(idEmpresa, state.editorContexto.idCarta);
+      state.editorContexto.carta = datos.carta;
+      state.editorContexto.secciones = datos.secciones || [];
+      state.editorContexto.stats = datos.stats || {};
+      actualizarBotonPublicarEnEditor(datos.carta);
+      renderEditor();
+    } catch (e) {
+      console.error('[Firestore] error recargando el editor:', e && e.message);
+      AdminUI.toast('No pudimos recargar', 'error');
     }
-    state.editorContexto.carta = resp.carta;
-    state.editorContexto.secciones = resp.secciones || [];
-    state.editorContexto.stats = resp.stats || {};
-    actualizarBotonPublicarEnEditor(resp.carta);
-    renderEditor();
   }
 
   function renderEditor() {
