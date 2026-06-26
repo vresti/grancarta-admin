@@ -271,10 +271,12 @@ const AdminAPI = (function() {
       });
     },
 
-    productoToggleDisponible(idProducto, disponible) {
+    productoToggleDisponible(idProducto, estado) {
+      // El backend (script 09) espera 'estado' con 3 valores: 'visible'|'agotado'|'oculto'.
+      // (Antes mandaba 'disponible', que el back interpretaba como booleano → siempre oculto.)
       return llamar('producto_toggle_disponible', {
         id_producto: idProducto,
-        disponible: disponible
+        estado: estado
       });
     },
 
