@@ -2922,45 +2922,123 @@ const AdminApp = (function() {
       return;
     }
 
-    const btn = document.getElementById('btn-seccion-guardar');
-    btn.disabled = true;
-    btn.textContent = 'Guardando…';
+    const ctx = state.editorContexto;
+    const idEmpresa = (ctx && (ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa)));
+    const idCarta   = (ctx && (ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta)));
+    const esEditar = !!state.seccionEditarId;
 
-    let resp;
-    if (state.seccionEditarId) {
-      resp = await AdminAPI.seccionActualizar(state.seccionEditarId, { nombre, descripcion });
-    } else {
-      resp = await AdminAPI.seccionCrear({
-        id_carta: state.editorContexto.idCarta,
-        nombre: nombre,
-        descripcion: descripcion
+    // ---- EDITAR: FIRESTORE PRIMERO + cero recarga (vuela) ----
+    if (esEditar) {
+      const idSeccion = state.seccionEditarId;
+      ctx.secciones.forEach(function(s) {
+        if (s.Id_Seccion === idSeccion) { s.Nombre = nombre; s.Descripcion = descripcion; }
       });
-    }
+      cerrarModales();
+      renderEditor();
+      AdminUI.toast('Sección actualizada', 'success');
 
-    btn.disabled = false;
-    btn.textContent = state.seccionEditarId ? 'Guardar cambios' : 'Crear sección';
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos guardar', 'error');
+      try {
+        if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+        if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+        await window.GCFirestore.actualizarSeccion(idEmpresa, idCarta, idSeccion, {
+          nombre: nombre, descripcion: descripcion
+        });
+        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+      } catch (e) {
+        console.warn('[Firestore] no se pudo guardar la sección:', e && e.message);
+        AdminUI.toast('No pudimos guardar el cambio. Reintentá.', 'error');
+        await recargarEditor();
+        return;
+      }
+      AdminAPI.seccionActualizar(idSeccion, { nombre, descripcion })
+        .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] sección no actualizada (Firestore sí):', resp && resp.error); })
+        .catch(function(err){ console.warn('[GAS] error sincronizando sección (Firestore ya guardó):', err && err.message); });
       return;
     }
 
-    AdminUI.toast(state.seccionEditarId ? 'Sección actualizada' : 'Sección creada', 'success');
+    // ---- CREAR: GAS PRIMERO (genera el ID SCC-xx) + espejo Firestore ----
+    const btn = document.getElementById('btn-seccion-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+
+    let resp;
+    try {
+      resp = await AdminAPI.seccionCrear({ id_carta: idCarta, nombre: nombre, descripcion: descripcion });
+    } catch (e) {
+      resp = { ok: false, error: (e && e.message) };
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Crear sección';
+
+    if (!resp || !resp.ok) {
+      AdminUI.toast((resp && resp.error) || 'No pudimos crear la sección', 'error');
+      return;
+    }
+
+    AdminUI.toast('Sección creada', 'success');
     cerrarModales();
+
+    try {
+      const sec = resp.seccion || {};
+      const idSeccionNueva = sec.Id_Seccion;
+      if (window.GCFirestore && idEmpresa && idCarta && idSeccionNueva) {
+        await window.GCFirestore.crearSeccion(idEmpresa, idCarta, idSeccionNueva, {
+          nombre: sec.Nombre || nombre,
+          descripcion: sec.Descripcion || descripcion,
+          orden: sec.Orden || ((ctx.secciones.length || 0) + 1)
+        });
+        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+      }
+    } catch (e) {
+      console.warn('[Firestore] sección creada en planilla pero no espejada:', e && e.message);
+    }
+
     await recargarEditor();
   }
 
   async function ordenarSeccion(idSeccion, direccion) {
-    const resp = await AdminAPI.seccionOrdenar(idSeccion, direccion);
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos reordenar', 'error');
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+    const idEmpresa = ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa);
+    const idCarta   = ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta);
+
+    // Ordenar hermanas por Orden y ubicar la actual + su vecina.
+    const hermanas = ctx.secciones.slice().sort(function(a,b){ return (a.Orden||0)-(b.Orden||0); });
+    const idx = hermanas.findIndex(function(s){ return s.Id_Seccion === idSeccion; });
+    if (idx === -1) return;
+    const idxObj = direccion === 'arriba' ? idx - 1 : idx + 1;
+    if (idxObj < 0 || idxObj >= hermanas.length) {
+      AdminUI.toast('La sección ya está en el extremo', 'info');
       return;
     }
+    const A = hermanas[idx], B = hermanas[idxObj];
+    const ordenA = A.Orden || 0, ordenB = B.Orden || 0;
+
+    // FIRESTORE PRIMERO: intercambiar orden de las dos secciones + rehornear.
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+      await window.GCFirestore.intercambiarOrdenSecciones(idEmpresa, idCarta, A.Id_Seccion, ordenA, B.Id_Seccion, ordenB);
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+    } catch (e) {
+      console.warn('[Firestore] no se pudo reordenar:', e && e.message);
+      AdminUI.toast('No pudimos reordenar. Reintentá.', 'error');
+      await recargarEditor();
+      return;
+    }
+
+    // Recarga liviana desde Firestore: garantiza el orden correcto en pantalla.
     await recargarEditor();
+
+    // GAS en segundo plano.
+    AdminAPI.seccionOrdenar(idSeccion, direccion)
+      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] orden no sincronizado (Firestore sí):', resp && resp.error); })
+      .catch(function(err){ console.warn('[GAS] error sincronizando orden (Firestore ya guardó):', err && err.message); });
   }
 
   async function eliminarSeccion(idSeccion, nombreSeccion, cantidadProductos) {
-    let mensaje = '"' + nombreSeccion + '" se va a eliminar.';
+    let mensaje = '"' + nombreSeccion + '" se va a eliminar definitivamente.';
     if (cantidadProductos > 0) {
       mensaje += ' Tiene ' + cantidadProductos + ' producto(s) que también serán eliminados.';
     }
@@ -2973,19 +3051,42 @@ const AdminApp = (function() {
     });
     if (!confirmar) return;
 
-    AdminUI.setLoading(true);
-    const resp = await AdminAPI.seccionEliminar(idSeccion, cantidadProductos > 0);
-    AdminUI.setLoading(false);
+    const ctx = state.editorContexto;
+    const idEmpresa = ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa);
+    const idCarta   = ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta);
 
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos eliminar', 'error');
+    // FIRESTORE PRIMERO: borrar sección + sus productos (físico, definitivo).
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+      await window.GCFirestore.eliminarSeccionConProductos(idEmpresa, idCarta, idSeccion);
+    } catch (e) {
+      console.warn('[Firestore] no se pudo eliminar la sección:', e && e.message);
+      AdminUI.toast('No pudimos eliminar la sección. Reintentá.', 'error');
       return;
     }
 
+    // Sacar de la pantalla al instante.
+    ctx.secciones = ctx.secciones.filter(function(s){ return s.Id_Seccion !== idSeccion; });
+    if (ctx.stats) {
+      ctx.stats.cantidad_secciones = ctx.secciones.length;
+      let cp = 0, disp = 0;
+      ctx.secciones.forEach(function(s){ s.productos.forEach(function(p){ cp++; if ((p.Estado_Visibilidad||'')==='visible') disp++; }); });
+      ctx.stats.cantidad_productos = cp;
+      ctx.stats.productos_disponibles = disp;
+    }
+    renderEditor();
     AdminUI.toast('Sección eliminada', 'success');
-    await recargarEditor();
-  }
 
+    // Rehornear (el comensal deja de verla).
+    try { await rehornearLocalesDeLaCarta(idEmpresa, idCarta); }
+    catch (e) { console.warn('[Firestore] no se pudo rehornear tras eliminar sección:', e && e.message); }
+
+    // GAS en segundo plano.
+    AdminAPI.seccionEliminar(idSeccion, cantidadProductos > 0)
+      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] sección no eliminada (Firestore sí):', resp && resp.error); })
+      .catch(function(err){ console.warn('[GAS] error sincronizando borrado de sección (Firestore ya borró):', err && err.message); });
+  }
 
   // ============================================================
   // PRODUCTOS (modales y CRUD)

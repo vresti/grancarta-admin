@@ -77,6 +77,51 @@
   }
 
   // ---------------------------------------------------------------------------
+  // SECCIONES — operaciones sobre empresas/{emp}/cartas/{carta}/secciones/{scc}
+  // ---------------------------------------------------------------------------
+  async function actualizarSeccion(idEmpresa, idCarta, idSeccion, campos) {
+    const ref = db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta)
+      .collection('secciones').doc(idSeccion);
+    await ref.update(campos);   // { nombre, descripcion }
+  }
+
+  async function crearSeccion(idEmpresa, idCarta, idSeccion, datos) {
+    const ref = db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta)
+      .collection('secciones').doc(idSeccion);
+    await ref.set(datos);       // { nombre, descripcion, orden }
+  }
+
+  // Elimina una sección Y TODOS sus productos (no hay padrón reutilizable: el
+  // producto vive dentro de su sección). Borrado físico, definitivo.
+  async function eliminarSeccionConProductos(idEmpresa, idCarta, idSeccion) {
+    const D = db();
+    const cartaRef = D.collection('empresas').doc(idEmpresa).collection('cartas').doc(idCarta);
+
+    // 1) Borrar todos los productos de esa sección.
+    const prodSnap = await cartaRef.collection('productos').where('id_seccion', '==', idSeccion).get();
+    const batch = D.batch();
+    prodSnap.docs.forEach(function (d) { batch.delete(d.ref); });
+    // 2) Borrar la sección.
+    batch.delete(cartaRef.collection('secciones').doc(idSeccion));
+    await batch.commit();
+    return { productos_borrados: prodSnap.size };
+  }
+
+  // Intercambia el campo 'orden' entre dos secciones (subir/bajar).
+  async function intercambiarOrdenSecciones(idEmpresa, idCarta, idSeccionA, ordenA, idSeccionB, ordenB) {
+    const D = db();
+    const cartaRef = D.collection('empresas').doc(idEmpresa).collection('cartas').doc(idCarta);
+    const batch = D.batch();
+    batch.update(cartaRef.collection('secciones').doc(idSeccionA), { orden: ordenB });
+    batch.update(cartaRef.collection('secciones').doc(idSeccionB), { orden: ordenA });
+    await batch.commit();
+  }
+
+  // ---------------------------------------------------------------------------
   // LECTURA del editor: lee carta + secciones + TODOS los productos de Firestore
   // y devuelve la forma EXACTA que espera renderEditor (campos con Mayúscula).
   // A diferencia del horno, NO filtra por estado (el editor gestiona todos).
@@ -247,6 +292,10 @@
     crearProducto: crearProducto,
     eliminarProducto: eliminarProducto,
     leerCartaCompleta: leerCartaCompleta,
+    actualizarSeccion: actualizarSeccion,
+    crearSeccion: crearSeccion,
+    eliminarSeccionConProductos: eliminarSeccionConProductos,
+    intercambiarOrdenSecciones: intercambiarOrdenSecciones,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
