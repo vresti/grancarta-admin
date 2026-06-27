@@ -2950,9 +2950,6 @@ const AdminApp = (function() {
         await recargarEditor();
         return;
       }
-      AdminAPI.seccionActualizar(idSeccion, { nombre, descripcion })
-        .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] sección no actualizada (Firestore sí):', resp && resp.error); })
-        .catch(function(err){ console.warn('[GAS] error sincronizando sección (Firestore ya guardó):', err && err.message); });
       return;
     }
 
@@ -3035,11 +3032,6 @@ const AdminApp = (function() {
       await recargarEditor();
       return;
     }
-
-    // 3) GAS en segundo plano.
-    AdminAPI.seccionOrdenar(idSeccion, direccion)
-      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] orden de sección no sincronizado (Firestore sí):', resp && resp.error); })
-      .catch(function(err){ console.warn('[GAS] error sincronizando orden de sección:', err && err.message); });
   }
 
   async function eliminarSeccion(idSeccion, nombreSeccion, cantidadProductos) {
@@ -3086,11 +3078,6 @@ const AdminApp = (function() {
     // Rehornear (el comensal deja de verla).
     try { await rehornearLocalesDeLaCarta(idEmpresa, idCarta); }
     catch (e) { console.warn('[Firestore] no se pudo rehornear tras eliminar sección:', e && e.message); }
-
-    // GAS en segundo plano.
-    AdminAPI.seccionEliminar(idSeccion, cantidadProductos > 0)
-      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] sección no eliminada (Firestore sí):', resp && resp.error); })
-      .catch(function(err){ console.warn('[GAS] error sincronizando borrado de sección (Firestore ya borró):', err && err.message); });
   }
 
   // ============================================================
@@ -3221,11 +3208,6 @@ const AdminApp = (function() {
         await recargarEditor();
         return;
       }
-
-      // 3) GAS en segundo plano.
-      AdminAPI.productoActualizar(idProducto, payloadGas)
-        .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] planilla no actualizada (Firestore sí):', resp && resp.error); })
-        .catch(function(err){ console.warn('[GAS] error sincronizando (Firestore ya guardó):', err && err.message); });
       return;
     }
 
@@ -3355,11 +3337,6 @@ const AdminApp = (function() {
       await recargarEditor();
       return;
     }
-
-    // 3) GAS en segundo plano.
-    AdminAPI.productoOrdenar(idProducto, direccion)
-      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] orden de producto no sincronizado (Firestore sí):', resp && resp.error); })
-      .catch(function(err){ console.warn('[GAS] error sincronizando orden de producto:', err && err.message); });
   }
 
   async function toggleDisponible(idProducto, estado) {
@@ -3394,11 +3371,6 @@ const AdminApp = (function() {
       await recargarEditor();   // recarga desde Firestore (rápido) para volver al estado real
       return;
     }
-
-    // 3) GAS en segundo plano: sincroniza la planilla sin bloquear (respaldo en retirada).
-    AdminAPI.productoToggleDisponible(idProducto, estado)
-      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] planilla no actualizada (Firestore sí):', resp && resp.error); })
-      .catch(function(err){ console.warn('[GAS] error sincronizando planilla (Firestore ya guardó):', err && err.message); });
   }
 
   // Refleja el estado de un producto en Firestore y rehornea los locales que
@@ -3482,12 +3454,6 @@ const AdminApp = (function() {
       console.warn('[Firestore] no se pudo rehornear tras eliminar:', e && e.message);
     }
 
-    // 4) GAS en segundo plano: marcar eliminado en la planilla (respaldo en retirada).
-    //    (Nota: el backend hoy escribe en una columna 'Estado' que la hoja Productos
-    //     no tiene, así que esto puede no surtir efecto; Firestore ya es la verdad.)
-    AdminAPI.productoEliminar(idProducto)
-      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] no marcó eliminado (Firestore sí):', resp && resp.error); })
-      .catch(function(err){ console.warn('[GAS] error al sincronizar borrado (Firestore ya borró):', err && err.message); });
   }
 
   // ============================================================
