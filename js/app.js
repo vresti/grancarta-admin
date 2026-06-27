@@ -2956,48 +2956,49 @@ const AdminApp = (function() {
       return;
     }
 
-    // ---- CREAR: GAS PRIMERO (genera el ID SCC-xx) + espejo Firestore ----
+    // ---- CREAR: 100% FIRESTORE (sin GAS). Firestore genera el ID SCC-XXXX. ----
     const btn = document.getElementById('btn-seccion-guardar');
     btn.disabled = true;
     btn.textContent = 'Creando…';
 
-    let resp;
     try {
-      resp = await AdminAPI.seccionCrear({ id_carta: idCarta, nombre: nombre, descripcion: descripcion });
-    } catch (e) {
-      resp = { ok: false, error: (e && e.message) };
-    }
-
-    btn.disabled = false;
-    btn.textContent = 'Crear sección';
-
-    if (!resp || !resp.ok) {
-      AdminUI.toast((resp && resp.error) || 'No pudimos crear la sección', 'error');
-      return;
-    }
-
-    AdminUI.toast('Sección creada', 'success');
-    cerrarModales();
-
-    // seccion_crear devuelve PLANO: { ok, id_seccion, nombre, orden } (minúscula).
-    // (Ojo: distinto a producto_crear que devuelve { producto: {...} } anidado.)
-    try {
-      const idSeccionNueva = resp.id_seccion;
       if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
       if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
-      if (!idSeccionNueva) throw new Error('GAS no devolvió id_seccion');
+
+      // 1) Generar ID en Firestore (SCC-XXXX, transacción atómica).
+      const idSeccionNueva = await window.GCFirestore.generarId('SCC');
+
+      // 2) Orden = última + 1.
+      let maxOrden = 0;
+      ctx.secciones.forEach(function(s) { if ((s.Orden||0) > maxOrden) maxOrden = s.Orden; });
+      const ordenNueva = maxOrden + 1;
+
+      // 3) Crear la sección en Firestore.
       await window.GCFirestore.crearSeccion(idEmpresa, idCarta, idSeccionNueva, {
-        nombre: resp.nombre || nombre,
-        descripcion: descripcion,
-        orden: (resp.orden !== undefined ? resp.orden : ((ctx.secciones.length || 0) + 1))
+        nombre: nombre, descripcion: descripcion, orden: ordenNueva
       });
+
+      // 4) Reflejar en pantalla al instante.
+      ctx.secciones.push({
+        Id_Seccion: idSeccionNueva, Nombre: nombre, Descripcion: descripcion,
+        Orden: ordenNueva, productos: []
+      });
+      if (ctx.stats) ctx.stats.cantidad_secciones = (ctx.stats.cantidad_secciones || 0) + 1;
+
+      btn.disabled = false;
+      btn.textContent = 'Crear sección';
+      AdminUI.toast('Sección creada', 'success');
+      cerrarModales();
+      renderEditor();
+
+      // 5) Rehornear.
       await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
     } catch (e) {
-      console.warn('[Firestore] sección creada en planilla pero NO espejada:', e && e.message);
-      AdminUI.toast('La sección se creó pero no se reflejó. Reintentá o avisá.', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Crear sección';
+      console.error('[Firestore] no se pudo crear la sección:', e && e.message);
+      AdminUI.toast('No pudimos crear la sección. Reintentá.', 'error');
     }
-
-    await recargarEditor();
   }
 
   async function ordenarSeccion(idSeccion, direccion) {
@@ -3229,60 +3230,72 @@ const AdminApp = (function() {
     }
 
     // =====================================================================
-    // CASO B — CREAR: GAS PRIMERO (genera el ID con su contador), luego
-    //          espejar a Firestore con ese ID + rehornear. (El ID es de GAS.)
+    // CASO B — CREAR: 100% FIRESTORE (sin GAS). Firestore genera el ID.
     // =====================================================================
     const btn = document.getElementById('btn-producto-guardar');
     btn.disabled = true;
     btn.textContent = 'Creando…';
 
-    payloadGas.id_seccion = state.productoSeccionId;
-    let resp;
     try {
-      resp = await AdminAPI.productoCrear(payloadGas);
-    } catch (e) {
-      resp = { ok: false, error: (e && e.message) };
-    }
-
-    btn.disabled = false;
-    btn.textContent = 'Crear producto';
-
-    if (!resp || !resp.ok) {
-      AdminUI.toast((resp && resp.error) || 'No pudimos crear el producto', 'error');
-      return;
-    }
-
-    AdminUI.toast('Producto creado', 'success');
-    cerrarModales();
-
-    // Espejar a Firestore con el ID que dio GAS + rehornear.
-    // ROBUSTO: el ID puede venir anidado (resp.producto.Id_Producto) o plano
-    // (resp.id_producto), según la versión del backend. Leemos de cualquier forma.
-    try {
-      const prod = resp.producto || resp || {};
-      const idProductoNuevo = prod.Id_Producto || resp.id_producto || prod.id_producto;
       if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
       if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
-      if (!idProductoNuevo) throw new Error('GAS no devolvió el id del producto');
+
+      // 1) Generar ID en Firestore (PRD-XXXX, transacción atómica).
+      const idProductoNuevo = await window.GCFirestore.generarId('PRD');
+
+      // 2) Calcular el orden (último + 1 dentro de la sección).
+      const idSeccion = state.productoSeccionId;
+      let maxOrden = 0;
+      ctx.secciones.forEach(function(s) {
+        if (s.Id_Seccion === idSeccion) {
+          s.productos.forEach(function(p) { if ((p.Orden||0) > maxOrden) maxOrden = p.Orden; });
+        }
+      });
+      const ordenNuevo = maxOrden + 1;
+
+      // 3) Crear el producto en Firestore.
       await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
-        id_seccion: prod.Id_Seccion || resp.id_seccion || state.productoSeccionId || '',
-        nombre: prod.Nombre || resp.nombre || nombre,
+        id_seccion: idSeccion,
+        nombre: nombre,
         descripcion: descripcion,
-        precio: (prod.Precio !== undefined ? prod.Precio : (resp.precio !== undefined ? resp.precio : precio)),
-        foto_url: prod.Foto_Url || '',
+        precio: precio,
+        foto_url: '',
         etiquetas: etiquetasObj,
         estado_visibilidad: 'visible',
         disponible_hoy: true,
-        orden: prod.Orden || resp.orden || 0
+        orden: ordenNuevo
       });
+
+      // 4) Reflejar en pantalla al instante (sin recargar).
+      ctx.secciones.forEach(function(s) {
+        if (s.Id_Seccion === idSeccion) {
+          s.productos.push({
+            Id_Producto: idProductoNuevo, Id_Seccion: idSeccion,
+            Nombre: nombre, Descripcion: descripcion, Precio: precio,
+            Estado_Visibilidad: 'visible', Disponible_Hoy: true,
+            Etiquetas: etiquetasObj, Orden: ordenNuevo
+          });
+        }
+      });
+      if (ctx.stats) {
+        ctx.stats.cantidad_productos = (ctx.stats.cantidad_productos || 0) + 1;
+        ctx.stats.productos_disponibles = (ctx.stats.productos_disponibles || 0) + 1;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Crear producto';
+      AdminUI.toast('Producto creado', 'success');
+      cerrarModales();
+      renderEditor();
+
+      // 5) Rehornear (el comensal lo ve).
       await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
     } catch (e) {
-      AdminUI.toast('El producto se creó pero no se reflejó. Reintentá o avisá.', 'error');
-      console.warn('[Firestore] producto creado en planilla pero no espejado:', e && e.message);
+      btn.disabled = false;
+      btn.textContent = 'Crear producto';
+      console.error('[Firestore] no se pudo crear el producto:', e && e.message);
+      AdminUI.toast('No pudimos crear el producto. Reintentá.', 'error');
     }
-
-    // Recargar desde Firestore (rápido) para que el nuevo producto aparezca con su ID real.
-    await recargarEditor();
   }
 
   // Rehornea los locales que publican una carta dada (helper compartido).

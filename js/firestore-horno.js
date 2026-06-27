@@ -28,6 +28,27 @@
   function ordenar(a, b) { return (a.orden || 0) - (b.orden || 0); }
 
   // ---------------------------------------------------------------------------
+  // GENERADOR DE IDs en Firestore (reemplaza a GAS). Transacción atómica sobre
+  // contadores/{PREFIJO}.ultimo → devuelve 'PREFIJO-XXXX' (4 dígitos, padding).
+  // Requiere haber corrido seed_contadores.js una vez (siembra el valor inicial).
+  // ---------------------------------------------------------------------------
+  async function generarId(prefijo) {
+    const D = db();
+    const ref = D.collection('contadores').doc(prefijo);
+    const nuevoNumero = await D.runTransaction(async function (tx) {
+      const doc = await tx.get(ref);
+      if (!doc.exists) {
+        throw new Error('Contador ' + prefijo + ' no existe. Correr seed_contadores.js primero.');
+      }
+      const ultimo = doc.data().ultimo || 0;
+      const siguiente = ultimo + 1;
+      tx.update(ref, { ultimo: siguiente });
+      return siguiente;
+    });
+    return prefijo + '-' + String(nuevoNumero).padStart(4, '0');
+  }
+
+  // ---------------------------------------------------------------------------
   // Escritura puntual del producto (estado y/o precio) en la carta normalizada.
   // ruta: empresas/{emp}/cartas/{carta}/productos/{prod}
   // ---------------------------------------------------------------------------
@@ -297,6 +318,7 @@
 
   // Exponer el módulo
   window.GCFirestore = {
+    generarId: generarId,
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,
     crearProducto: crearProducto,
