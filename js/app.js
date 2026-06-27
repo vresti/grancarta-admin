@@ -2979,19 +2979,22 @@ const AdminApp = (function() {
     AdminUI.toast('Sección creada', 'success');
     cerrarModales();
 
+    // seccion_crear devuelve PLANO: { ok, id_seccion, nombre, orden } (minúscula).
+    // (Ojo: distinto a producto_crear que devuelve { producto: {...} } anidado.)
     try {
-      const sec = resp.seccion || {};
-      const idSeccionNueva = sec.Id_Seccion;
-      if (window.GCFirestore && idEmpresa && idCarta && idSeccionNueva) {
-        await window.GCFirestore.crearSeccion(idEmpresa, idCarta, idSeccionNueva, {
-          nombre: sec.Nombre || nombre,
-          descripcion: sec.Descripcion || descripcion,
-          orden: sec.Orden || ((ctx.secciones.length || 0) + 1)
-        });
-        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
-      }
+      const idSeccionNueva = resp.id_seccion;
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+      if (!idSeccionNueva) throw new Error('GAS no devolvió id_seccion');
+      await window.GCFirestore.crearSeccion(idEmpresa, idCarta, idSeccionNueva, {
+        nombre: resp.nombre || nombre,
+        descripcion: descripcion,
+        orden: (resp.orden !== undefined ? resp.orden : ((ctx.secciones.length || 0) + 1))
+      });
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
     } catch (e) {
-      console.warn('[Firestore] sección creada en planilla pero no espejada:', e && e.message);
+      console.warn('[Firestore] sección creada en planilla pero NO espejada:', e && e.message);
+      AdminUI.toast('La sección se creó pero no se reflejó. Reintentá o avisá.', 'error');
     }
 
     await recargarEditor();
@@ -3003,7 +3006,6 @@ const AdminApp = (function() {
     const idEmpresa = ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa);
     const idCarta   = ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta);
 
-    // Ordenar hermanas por Orden y ubicar la actual + su vecina.
     const hermanas = ctx.secciones.slice().sort(function(a,b){ return (a.Orden||0)-(b.Orden||0); });
     const idx = hermanas.findIndex(function(s){ return s.Id_Seccion === idSeccion; });
     if (idx === -1) return;
@@ -3015,26 +3017,28 @@ const AdminApp = (function() {
     const A = hermanas[idx], B = hermanas[idxObj];
     const ordenA = A.Orden || 0, ordenB = B.Orden || 0;
 
-    // FIRESTORE PRIMERO: intercambiar orden de las dos secciones + rehornear.
+    // 1) PANTALLA AL INSTANTE: intercambiar Orden en memoria y redibujar (vuela).
+    A.Orden = ordenB;
+    B.Orden = ordenA;
+    renderEditor();
+
+    // 2) Firestore + rehornear.
     try {
       if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
       if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
       await window.GCFirestore.intercambiarOrdenSecciones(idEmpresa, idCarta, A.Id_Seccion, ordenA, B.Id_Seccion, ordenB);
       await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
     } catch (e) {
-      console.warn('[Firestore] no se pudo reordenar:', e && e.message);
+      console.warn('[Firestore] no se pudo reordenar la sección:', e && e.message);
       AdminUI.toast('No pudimos reordenar. Reintentá.', 'error');
       await recargarEditor();
       return;
     }
 
-    // Recarga liviana desde Firestore: garantiza el orden correcto en pantalla.
-    await recargarEditor();
-
-    // GAS en segundo plano.
+    // 3) GAS en segundo plano.
     AdminAPI.seccionOrdenar(idSeccion, direccion)
-      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] orden no sincronizado (Firestore sí):', resp && resp.error); })
-      .catch(function(err){ console.warn('[GAS] error sincronizando orden (Firestore ya guardó):', err && err.message); });
+      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] orden de sección no sincronizado (Firestore sí):', resp && resp.error); })
+      .catch(function(err){ console.warn('[GAS] error sincronizando orden de sección:', err && err.message); });
   }
 
   async function eliminarSeccion(idSeccion, nombreSeccion, cantidadProductos) {
@@ -3295,18 +3299,52 @@ const AdminApp = (function() {
   }
 
   async function ordenarProducto(idProducto, direccion) {
-    const resp = await AdminAPI.productoOrdenar(idProducto, direccion);
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos reordenar', 'error');
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+    const idEmpresa = ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa);
+    const idCarta   = ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta);
+
+    // Encontrar la sección del producto y sus hermanos.
+    let seccion = null;
+    ctx.secciones.forEach(function(s){
+      if (s.productos.some(function(p){ return p.Id_Producto === idProducto; })) seccion = s;
+    });
+    if (!seccion) return;
+
+    const hermanos = seccion.productos.slice().sort(function(a,b){ return (a.Orden||0)-(b.Orden||0); });
+    const idx = hermanos.findIndex(function(p){ return p.Id_Producto === idProducto; });
+    const idxObj = direccion === 'arriba' ? idx - 1 : idx + 1;
+    if (idxObj < 0 || idxObj >= hermanos.length) {
+      AdminUI.toast('El producto ya está en el extremo', 'info');
       return;
     }
-    await recargarEditor();
+    const A = hermanos[idx], B = hermanos[idxObj];
+    const ordenA = A.Orden || 0, ordenB = B.Orden || 0;
+
+    // 1) PANTALLA AL INSTANTE.
+    A.Orden = ordenB;
+    B.Orden = ordenA;
+    renderEditor();
+
+    // 2) Firestore + rehornear.
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+      await window.GCFirestore.intercambiarOrdenProductos(idEmpresa, idCarta, A.Id_Producto, ordenA, B.Id_Producto, ordenB);
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+    } catch (e) {
+      console.warn('[Firestore] no se pudo reordenar el producto:', e && e.message);
+      AdminUI.toast('No pudimos reordenar. Reintentá.', 'error');
+      await recargarEditor();
+      return;
+    }
+
+    // 3) GAS en segundo plano.
+    AdminAPI.productoOrdenar(idProducto, direccion)
+      .then(function(resp){ if(!resp||!resp.ok) console.warn('[GAS] orden de producto no sincronizado (Firestore sí):', resp && resp.error); })
+      .catch(function(err){ console.warn('[GAS] error sincronizando orden de producto:', err && err.message); });
   }
 
-  // v4 (27/6): VOLVER A VOLAR — Firestore PRIMERO + cero recarga.
-  // Ahora que el editor LEE de Firestore, escribir Firestore primero es SEGURO
-  // (la pantalla lee la misma fuente que escribimos; no hay "pelea de mundos").
-  // 1) pantalla al instante (memoria), 2) Firestore + rehornear, 3) GAS atrás.
   async function toggleDisponible(idProducto, estado) {
     const ctx = state.editorContexto;
     if (!ctx) return;

@@ -111,6 +111,16 @@
     return { productos_borrados: prodSnap.size };
   }
 
+  // Intercambia el campo 'orden' entre dos productos (subir/bajar) dentro de una carta.
+  async function intercambiarOrdenProductos(idEmpresa, idCarta, idProdA, ordenA, idProdB, ordenB) {
+    const D = db();
+    const cartaRef = D.collection('empresas').doc(idEmpresa).collection('cartas').doc(idCarta);
+    const batch = D.batch();
+    batch.update(cartaRef.collection('productos').doc(idProdA), { orden: ordenB });
+    batch.update(cartaRef.collection('productos').doc(idProdB), { orden: ordenA });
+    await batch.commit();
+  }
+
   // Intercambia el campo 'orden' entre dos secciones (subir/bajar).
   async function intercambiarOrdenSecciones(idEmpresa, idCarta, idSeccionA, ordenA, idSeccionB, ordenB) {
     const D = db();
@@ -296,6 +306,7 @@
     crearSeccion: crearSeccion,
     eliminarSeccionConProductos: eliminarSeccionConProductos,
     intercambiarOrdenSecciones: intercambiarOrdenSecciones,
+    intercambiarOrdenProductos: intercambiarOrdenProductos,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
