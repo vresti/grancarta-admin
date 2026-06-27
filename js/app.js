@@ -3153,10 +3153,14 @@ const AdminApp = (function() {
   async function confirmarProducto() {
     const nombre = document.getElementById('producto-nombre').value.trim();
     const descripcion = document.getElementById('producto-descripcion').value.trim();
-    const precio = parseFloat(document.getElementById('producto-precio').value);
+    const precioCrudo = document.getElementById('producto-precio').value.trim();
+    const precio = parseFloat(precioCrudo);
 
-    if (nombre.length < 1) { AdminUI.toast('Pon un nombre al producto', 'error'); return; }
-    if (isNaN(precio) || precio < 0) { AdminUI.toast('Pon un precio válido', 'error'); return; }
+    if (nombre.length < 1) { AdminUI.toast('Poné un nombre al producto', 'error'); return; }
+    // El precio $0 es válido (ej: "Servicio de mesa"), pero el campo NO puede estar vacío.
+    if (precioCrudo === '') { AdminUI.toast('Falta el precio. Poné 0 si es sin cargo.', 'error'); return; }
+    if (isNaN(precio)) { AdminUI.toast('El precio no es un número válido', 'error'); return; }
+    if (precio < 0) { AdminUI.toast('El precio no puede ser negativo', 'error'); return; }
 
     const alergenos = [];
     document.querySelectorAll('[data-alergeno]').forEach(function(cb) {
