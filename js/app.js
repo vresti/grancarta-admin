@@ -3256,24 +3256,28 @@ const AdminApp = (function() {
     cerrarModales();
 
     // Espejar a Firestore con el ID que dio GAS + rehornear.
+    // ROBUSTO: el ID puede venir anidado (resp.producto.Id_Producto) o plano
+    // (resp.id_producto), según la versión del backend. Leemos de cualquier forma.
     try {
-      const prod = resp.producto || {};
-      const idProductoNuevo = prod.Id_Producto;
-      if (window.GCFirestore && idEmpresa && idCarta && idProductoNuevo) {
-        await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
-          id_seccion: prod.Id_Seccion || state.productoSeccionId || '',
-          nombre: prod.Nombre || nombre,
-          descripcion: prod.Descripcion || descripcion,
-          precio: (prod.Precio !== undefined ? prod.Precio : precio),
-          foto_url: prod.Foto_Url || '',
-          etiquetas: etiquetasObj,
-          estado_visibilidad: 'visible',
-          disponible_hoy: true,
-          orden: prod.Orden || 0
-        });
-        await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
-      }
+      const prod = resp.producto || resp || {};
+      const idProductoNuevo = prod.Id_Producto || resp.id_producto || prod.id_producto;
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+      if (!idProductoNuevo) throw new Error('GAS no devolvió el id del producto');
+      await window.GCFirestore.crearProducto(idEmpresa, idCarta, idProductoNuevo, {
+        id_seccion: prod.Id_Seccion || resp.id_seccion || state.productoSeccionId || '',
+        nombre: prod.Nombre || resp.nombre || nombre,
+        descripcion: descripcion,
+        precio: (prod.Precio !== undefined ? prod.Precio : (resp.precio !== undefined ? resp.precio : precio)),
+        foto_url: prod.Foto_Url || '',
+        etiquetas: etiquetasObj,
+        estado_visibilidad: 'visible',
+        disponible_hoy: true,
+        orden: prod.Orden || resp.orden || 0
+      });
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
     } catch (e) {
+      AdminUI.toast('El producto se creó pero no se reflejó. Reintentá o avisá.', 'error');
       console.warn('[Firestore] producto creado en planilla pero no espejado:', e && e.message);
     }
 
