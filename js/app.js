@@ -1795,14 +1795,19 @@ const AdminApp = (function() {
 
     const okBtn = document.getElementById('modal-sect-ok');
     okBtn.disabled = true;
-    const resp = await AdminAPI.sectorCrear(ctx.idLocal, nombre, ctx.audienceSlug, color, mesaNum, mesaCap);
-    okBtn.disabled = false;
-
-    if (!resp.ok) {
-      status.textContent = resp.error || 'No pudimos crear el sector';
+    try {
+      // Firestore-primero: crea el sector con su primera mesa (+token) en Firestore.
+      await window.GCFirestore.crearSector(state.idEmpresaActiva, ctx.idLocal, {
+        nombre: nombre, audienceSlug: ctx.audienceSlug, colorHex: color,
+        mesaNumero: mesaNum, mesaCapacidad: mesaCap
+      });
+    } catch (e) {
+      okBtn.disabled = false;
+      status.textContent = (e && e.message) || 'No pudimos crear el sector';
       status.style.color = '#f87171';
       return;
     }
+    okBtn.disabled = false;
     cerrarModalSectores();
     AdminUI.toast('Sector creado', 'info');
     await cargarSectores();
@@ -1861,12 +1866,15 @@ const AdminApp = (function() {
       ? '¿Eliminar el sector "' + nombreSector + '" y sus ' + cantMesas + ' mesa(s)?\n\nLos QR de esas mesas dejarán de funcionar.'
       : '¿Eliminar el sector "' + nombreSector + '"?';
     if (!confirm(aviso)) return;
-    const resp = await AdminAPI.sectorEliminar(idSector);
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos eliminar el sector', 'error');
+    try {
+      // Borrado lógico + cascada a mesas + baja de sus tokens (QR dejan de resolver).
+      await window.GCFirestore.eliminarSector(
+        state.idEmpresaActiva, state.sectoresContexto.idLocal, idSector);
+    } catch (e) {
+      AdminUI.toast((e && e.message) || 'No pudimos eliminar el sector', 'error');
       return;
     }
-    AdminUI.toast(resp.mensaje || 'Sector eliminado', 'info');
+    AdminUI.toast('Sector eliminado', 'info');
     await cargarSectores();
   }
 
@@ -2190,14 +2198,17 @@ const AdminApp = (function() {
 
     const okBtn = document.getElementById('modal-sect-ok');
     okBtn.disabled = true;
-    const resp = await AdminAPI.sectorActualizar(idSector, { nombre: nombre, color_hex: color });
-    okBtn.disabled = false;
-
-    if (!resp.ok) {
-      status.textContent = resp.error || 'No pudimos guardar el sector';
+    try {
+      await window.GCFirestore.actualizarSector(
+        state.idEmpresaActiva, state.sectoresContexto.idLocal, idSector,
+        { nombre: nombre, color_hex: color });
+    } catch (e) {
+      okBtn.disabled = false;
+      status.textContent = (e && e.message) || 'No pudimos guardar el sector';
       status.style.color = '#f87171';
       return;
     }
+    okBtn.disabled = false;
     cerrarModalSectores();
     AdminUI.toast('Sector actualizado', 'info');
     await cargarSectores();

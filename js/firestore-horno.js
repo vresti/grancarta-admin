@@ -485,6 +485,188 @@
   }
 
   // ---------------------------------------------------------------------------
+  // SECTORES/MESAS — escritura (reemplaza el GAS sector_crear/actualizar/eliminar).
+  // Preserva las validaciones del GAS: canal activo, número de mesa único por
+  // local (case-insensitive), sector nace con ≥1 mesa, borrado lógico.
+  // ---------------------------------------------------------------------------
+
+  function _uuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    // Fallback simple (RFC4122 v4) por si el navegador no tiene crypto.randomUUID.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  // Slugs de los canales (publicaciones ACTIVAS) del local — para validar canal.
+  async function _slugsCanalesActivos(locRef) {
+    const snap = await locRef.collection('publicaciones').where('estado', '==', 'activa').get();
+    return snap.docs.map(function (d) { return (d.data().audience_slug || ''); });
+  }
+
+  // ¿El número de mesa ya existe en el local? (case-insensitive + trim; ignora
+  // mesas eliminadas y, opcionalmente, una mesa que se está editando).
+  async function _numeroMesaRepetido(locRef, numero, idMesaExcluir) {
+    const objetivo = String(numero == null ? '' : numero).trim().toLowerCase();
+    if (objetivo === '') return false;
+    const snap = await locRef.collection('mesas').get();
+    return snap.docs.some(function (d) {
+      const m = d.data();
+      if (m.estado === 'eliminada') return false;
+      if (idMesaExcluir && d.id === idMesaExcluir) return false;
+      return String(m.numero || '').trim().toLowerCase() === objetivo;
+    });
+  }
+
+  // Próximo orden de sector libre en el local (max + 1, ignora eliminados).
+  async function _siguienteOrdenSector(locRef) {
+    const snap = await locRef.collection('sectores').get();
+    let max = 0;
+    snap.docs.forEach(function (d) {
+      const s = d.data();
+      if (s.estado === 'eliminado') return;
+      const o = parseInt(s.orden, 10);
+      if (!isNaN(o) && o > max) max = o;
+    });
+    return max + 1;
+  }
+
+  // Crea una mesa: doc mesa + doc tokens_mesa (atómico vía batch). Compartido por
+  // crearSector (primera mesa) y crearMesa (paso 5). Mintea el token (regla v1.4).
+  // NO guarda URL: el QR se calcula en vivo en el paso de impresión.
+  async function _crearMesaDoc(idEmpresa, idLocal, idSector, audienceSlug, numero, capacidad, nombreVisible) {
+    const D = db();
+    const locRef = D.collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
+
+    const numFinal = String(numero == null ? '' : numero).trim();
+    if (numFinal === '') throw new Error('El identificador de la mesa es obligatorio (ej: 1, Barra 1, VIP-A)');
+    if (await _numeroMesaRepetido(locRef, numFinal, null)) {
+      throw new Error('Ya existe una mesa "' + numFinal + '" en este local. Los identificadores no se pueden repetir.');
+    }
+
+    const idMesa = await generarId('MES');
+    const token = _uuid();
+    // nombre_visible: si no se especifica otro, es IGUAL al número (sin "Mesa ").
+    const nombreFinal = (nombreVisible && String(nombreVisible).trim() !== '')
+      ? String(nombreVisible).trim() : numFinal;
+
+    const mesaDoc = {
+      id_local: idLocal,
+      id_sector: idSector,
+      numero: numFinal,
+      nombre_visible: nombreFinal,
+      token_qr: token,
+      estado: 'activa',
+      fecha_alta: firebase.firestore.Timestamp.now()
+    };
+    const capNum = (capacidad !== undefined && capacidad !== null && String(capacidad).trim() !== '')
+      ? (parseInt(capacidad, 10) || null) : null;
+    if (capNum !== null) mesaDoc.capacidad = capNum;
+
+    const tokenDoc = {
+      id_mesa: idMesa,
+      id_empresa: idEmpresa,
+      id_local: idLocal,
+      id_sector: idSector,
+      audience: audienceSlug || '',
+      nombre_visible: nombreFinal
+    };
+
+    const batch = D.batch();
+    batch.set(locRef.collection('mesas').doc(idMesa), mesaDoc);
+    batch.set(D.collection('tokens_mesa').doc(token), tokenDoc);
+    await batch.commit();
+
+    return { idMesa: idMesa, token: token, nombre_visible: nombreFinal };
+  }
+
+  // Crea un sector con su PRIMERA mesa (un sector sin mesa no tiene QR → ≥1).
+  // datos: { nombre, audienceSlug, colorHex, mesaNumero, mesaCapacidad }.
+  async function crearSector(idEmpresa, idLocal, datos) {
+    const D = db();
+    const locRef = D.collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
+
+    const nombre = String(datos.nombre || '').trim();
+    const audienceSlug = String(datos.audienceSlug || '').trim().toLowerCase();
+    const colorHex = String(datos.colorHex || '#1B2B4A').trim() || '#1B2B4A';
+    const mesaNumero = String(datos.mesaNumero == null ? '' : datos.mesaNumero).trim();
+
+    if (!nombre) throw new Error('Nombre del sector requerido');
+
+    // Canal válido: debe existir como publicación activa del local.
+    const slugs = await _slugsCanalesActivos(locRef);
+    if (slugs.length === 0) {
+      throw new Error('Este local no tiene canales (publicaciones activas) todavía. Creá una publicación primero.');
+    }
+    if (slugs.indexOf(audienceSlug) === -1) {
+      const disp = slugs.map(function (s) { return s || '(default)'; }).join(', ');
+      throw new Error('No existe el canal "' + (audienceSlug || '(default)') + '" en este local. Canales disponibles: ' + disp);
+    }
+
+    // Validar la primera mesa ANTES de crear el sector (no dejar sector huérfano).
+    if (mesaNumero === '') throw new Error('El identificador de la primera mesa es obligatorio (ej: 1, Barra 1, VIP-A)');
+    if (await _numeroMesaRepetido(locRef, mesaNumero, null)) {
+      throw new Error('Ya existe una mesa "' + mesaNumero + '" en este local. Los identificadores no se pueden repetir.');
+    }
+
+    const idSector = await generarId('SEC');
+    const orden = await _siguienteOrdenSector(locRef);
+    await locRef.collection('sectores').doc(idSector).set({
+      id_local: idLocal,
+      nombre: nombre,
+      color_hex: colorHex,
+      orden: orden,
+      estado: 'activo',
+      audience_slug: audienceSlug,
+      botones_activos: false
+    });
+
+    const mesa = await _crearMesaDoc(idEmpresa, idLocal, idSector, audienceSlug, mesaNumero, datos.mesaCapacidad, null);
+    return { id_sector: idSector, id_mesa: mesa.idMesa };
+  }
+
+  // Actualiza nombre y/o color de un sector (lo único que el front edita).
+  async function actualizarSector(idEmpresa, idLocal, idSector, campos) {
+    const patch = {};
+    if (campos.nombre !== undefined) {
+      const v = String(campos.nombre).trim();
+      if (v.length < 1) throw new Error('Nombre vacío');
+      patch.nombre = v;
+    }
+    if (campos.color_hex !== undefined) {
+      patch.color_hex = String(campos.color_hex).trim() || '#1B2B4A';
+    }
+    if (Object.keys(patch).length === 0) throw new Error('Sin cambios para aplicar');
+    await db().collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal)
+      .collection('sectores').doc(idSector).update(patch);
+    return { id_sector: idSector, cambios: patch };
+  }
+
+  // Elimina un sector (borrado LÓGICO) y EN CASCADA sus mesas. Además borra el
+  // doc tokens_mesa de cada mesa para que sus QR dejen de resolver (lo prometido
+  // al dueño: "los QR de esas mesas dejarán de funcionar"). Todo atómico (batch).
+  async function eliminarSector(idEmpresa, idLocal, idSector) {
+    const D = db();
+    const locRef = D.collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
+    const mesasSnap = await locRef.collection('mesas').where('id_sector', '==', idSector).get();
+
+    const batch = D.batch();
+    let mesasEliminadas = 0;
+    mesasSnap.docs.forEach(function (d) {
+      const m = d.data();
+      if (m.estado === 'eliminada') return;
+      batch.update(d.ref, { estado: 'eliminada' });
+      if (m.token_qr) batch.delete(D.collection('tokens_mesa').doc(m.token_qr));
+      mesasEliminadas++;
+    });
+    batch.update(locRef.collection('sectores').doc(idSector), { estado: 'eliminado' });
+    await batch.commit();
+
+    return { id_sector: idSector, mesas_eliminadas: mesasEliminadas };
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -598,6 +780,9 @@
     intercambiarOrdenProductos: intercambiarOrdenProductos,
     toggleBotonesSector: toggleBotonesSector,
     listarSectores: listarSectores,
+    crearSector: crearSector,
+    actualizarSector: actualizarSector,
+    eliminarSector: eliminarSector,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
