@@ -2274,16 +2274,15 @@ const AdminApp = (function() {
   async function cargarCartas() {
     if (!state.cartasContexto) return;
     AdminUI.setLoading(true);
-    const resp = await AdminAPI.cartaListar(state.cartasContexto.idEmpresa);
-    AdminUI.setLoading(false);
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cargar las cartas', 'error');
-      return;
+    try {
+      const cartas = await window.GCFirestore.listarCartas(state.cartasContexto.idEmpresa);
+      state.cartasContexto.cartas = cartas || [];
+      renderCartas();
+    } catch (e) {
+      AdminUI.toast('No pudimos cargar las cartas: ' + ((e && e.message) || e), 'error');
+    } finally {
+      AdminUI.setLoading(false);
     }
-
-    state.cartasContexto.cartas = resp.cartas || [];
-    renderCartas();
   }
 
   function renderCartas() {
@@ -2378,21 +2377,21 @@ const AdminApp = (function() {
     btn.disabled = true;
     btn.textContent = 'Creando…';
 
-    const resp = await AdminAPI.cartaCrear({
-      id_empresa: state.cartasContexto.idEmpresa,
-      nombre: nombre,
-      descripcion: descripcion,
-      redondeo: redondeo
-    });
-
-    btn.disabled = false;
-    btn.textContent = 'Crear carta';
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos crear la carta', 'error');
+    try {
+      await window.GCFirestore.crearCarta(state.cartasContexto.idEmpresa, {
+        nombre: nombre,
+        descripcion: descripcion,
+        redondeo: redondeo
+      });
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Crear carta';
+      AdminUI.toast('No pudimos crear la carta: ' + ((e && e.message) || e), 'error');
       return;
     }
 
+    btn.disabled = false;
+    btn.textContent = 'Crear carta';
     AdminUI.toast('Carta creada', 'success');
     cerrarModales();
     await cargarCartas();
@@ -2435,18 +2434,22 @@ const AdminApp = (function() {
     btn.disabled = true;
     btn.textContent = 'Duplicando…';
 
-    const resp = await AdminAPI.cartaDuplicar(state.cartaDuplicarId, nombreNueva, modificador);
-
-    btn.disabled = false;
-    btn.textContent = 'Duplicar carta';
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos duplicar la carta', 'error');
+    let r;
+    try {
+      r = await window.GCFirestore.duplicarCarta(
+        state.cartasContexto.idEmpresa, state.cartaDuplicarId, nombreNueva, modificador
+      );
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Duplicar carta';
+      AdminUI.toast('No pudimos duplicar la carta: ' + ((e && e.message) || e), 'error');
       return;
     }
 
+    btn.disabled = false;
+    btn.textContent = 'Duplicar carta';
     AdminUI.toast(
-      'Carta duplicada · ' + resp.secciones_copiadas + ' secciones, ' + resp.productos_copiados + ' productos',
+      'Carta duplicada · ' + r.secciones_copiadas + ' secciones, ' + r.productos_copiados + ' productos',
       'success'
     );
     cerrarModales();
@@ -2558,16 +2561,22 @@ const AdminApp = (function() {
     btn.disabled = true;
     btn.textContent = 'Guardando…';
 
-    const resp = await AdminAPI.cartaActualizar(state.cartaEditarId, cambios);
-
-    btn.disabled = false;
-    btn.textContent = 'Guardar cambios';
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos guardar', 'error');
+    const idEmpresa = state.cartasContexto.idEmpresa;
+    const idCarta = state.cartaEditarId;
+    try {
+      // Firestore directo: actualizar la carta y rehornear (los cambios de
+      // nombre/redondeo/pie/template/notas afectan lo que ve el comensal).
+      await window.GCFirestore.actualizarCarta(idEmpresa, idCarta, cambios);
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar cambios';
+      AdminUI.toast('No pudimos guardar: ' + ((e && e.message) || e), 'error');
       return;
     }
 
+    btn.disabled = false;
+    btn.textContent = 'Guardar cambios';
     AdminUI.toast('Cambios guardados', 'success');
     cerrarModales();
     await cargarCartas();
@@ -2578,49 +2587,61 @@ const AdminApp = (function() {
   async function activarCarta(idCarta, nombreCarta) {
     const confirmar = await AdminUI.confirm({
       title: '¿Activar esta carta?',
-      message: '"' + nombreCarta + '" se activará. Si hay otras cartas activas en la empresa, se desactivarán automáticamente. Solo una carta puede estar activa a la vez.',
+      message: '"' + nombreCarta + '" pasará a estado activa, lista para publicar en los canales que elijas. Puede haber varias cartas activas a la vez.',
       okLabel: 'Activar',
       cancelLabel: 'Cancelar'
     });
     if (!confirmar) return;
 
+    const idEmpresa = state.cartasContexto.idEmpresa;
     AdminUI.setLoading(true);
-    const resp = await AdminAPI.cartaActivar(idCarta);
-    AdminUI.setLoading(false);
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos activar', 'error');
+    try {
+      await window.GCFirestore.actualizarCarta(idEmpresa, idCarta, { estado: 'activa' });
+    } catch (e) {
+      AdminUI.setLoading(false);
+      AdminUI.toast('No pudimos activar: ' + ((e && e.message) || e), 'error');
       return;
     }
-
-    if (resp.otras_desactivadas > 0) {
-      AdminUI.toast('Carta activada (' + resp.otras_desactivadas + ' otras desactivadas)', 'success');
-    } else {
-      AdminUI.toast('Carta activada', 'success');
-    }
+    AdminUI.setLoading(false);
+    AdminUI.toast('Carta activada', 'success');
     await cargarCartas();
   }
 
   // --- Archivar ---
 
   async function archivarCarta(idCarta, nombreCarta) {
+    const idEmpresa = state.cartasContexto.idEmpresa;
+
+    // Guarda (desde memoria): no se archiva una carta publicada en algún canal.
+    const porLocal = (state.publicacionesPorEmpresa && state.publicacionesPorEmpresa[idEmpresa]) || {};
+    const localesPublicando = [];
+    Object.keys(porLocal).forEach(function (idLocal) {
+      const pubs = porLocal[idLocal] || [];
+      if (pubs.some(function (p) { return p.Id_Carta === idCarta; })) localesPublicando.push(idLocal);
+    });
+    if (localesPublicando.length > 0) {
+      AdminUI.toast('No podés archivar esta carta: está publicada en ' + localesPublicando.length +
+                    ' local(es). Activá otra carta en esos canales primero.', 'error');
+      return;
+    }
+
     const confirmar = await AdminUI.confirm({
       title: '¿Archivar esta carta?',
-      message: '"' + nombreCarta + '" se va a archivar (no se borra, queda oculta). Podrás recuperarla manualmente desde la Sheet si lo necesitás.',
+      message: '"' + nombreCarta + '" se va a archivar (no se borra, queda oculta). Podés recuperarla cambiándole el estado en Firestore si lo necesitás.',
       okLabel: 'Archivar',
       cancelLabel: 'Cancelar'
     });
     if (!confirmar) return;
 
     AdminUI.setLoading(true);
-    const resp = await AdminAPI.cartaArchivar(idCarta);
-    AdminUI.setLoading(false);
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos archivar', 'error');
+    try {
+      await window.GCFirestore.actualizarCarta(idEmpresa, idCarta, { estado: 'archivada' });
+    } catch (e) {
+      AdminUI.setLoading(false);
+      AdminUI.toast('No pudimos archivar: ' + ((e && e.message) || e), 'error');
       return;
     }
-
+    AdminUI.setLoading(false);
     AdminUI.toast('Carta archivada', 'success');
     await cargarCartas();
   }

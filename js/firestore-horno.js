@@ -222,6 +222,151 @@
   }
 
   // ---------------------------------------------------------------------------
+  // CARTAS (nivel carta) — operan sobre empresas/{emp}/cartas/{carta}
+  // ---------------------------------------------------------------------------
+
+  // Lista las cartas de una empresa (excluye archivadas). Devuelve la forma
+  // PascalCase que espera renderCartas en el admin.
+  async function listarCartas(idEmpresa) {
+    const snap = await db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').get();
+    return snap.docs.map(function (d) {
+      const c = d.data();
+      return {
+        Id_Carta: d.id,
+        Nombre: c.nombre || '',
+        Descripcion: c.descripcion || '',
+        Estado: c.estado || 'activa',
+        Redondeo: (c.redondeo === undefined || c.redondeo === null) ? '10' : c.redondeo,
+        Template: c.template || ''
+      };
+    }).filter(function (c) { return c.Estado !== 'archivada'; });
+  }
+
+  // Actualiza campos de una carta EXISTENTE. Sirve para metadatos
+  // ({ nombre, descripcion, redondeo, pie_*, notas, template }) o para cambiar
+  // de estado ({ estado: 'activa' | 'archivada' }). Campos en minúscula = los
+  // del doc en Firestore.
+  async function actualizarCarta(idEmpresa, idCarta, campos) {
+    const ref = db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta);
+    await ref.update(campos);
+  }
+
+  // Redondeo de precios — réplica EXACTA de _redondear() de GAS (Script 09).
+  function _redondearPrecio(valor, modo) {
+    const num = parseFloat(valor);
+    if (isNaN(num)) return valor;
+    switch (modo) {
+      case 'sin':  return Math.round(num * 100) / 100;
+      case '10':   return Math.round(num / 10) * 10;
+      case '100':  return Math.round(num / 100) * 100;
+      case '1000': return Math.round(num / 1000) * 1000;
+      default:     return Math.round(num / 10) * 10;
+    }
+  }
+
+  // Crea una carta NUEVA en Firestore, en estado 'borrador'. Genera el ID
+  // CAR-XXXX con el contador de Firestore (requiere contadores/CAR sembrado).
+  async function crearCarta(idEmpresa, datos) {
+    const idCarta = await generarId('CAR');
+    await db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta)
+      .set({
+        id_empresa: idEmpresa,
+        nombre: datos.nombre || '',
+        descripcion: datos.descripcion || '',
+        redondeo: datos.redondeo || '10',
+        template: datos.template || 'minimalista',
+        estado: 'borrador',
+        pie_direccion: datos.pie_direccion || '',
+        pie_telefono: datos.pie_telefono || '',
+        pie_mail: datos.pie_mail || '',
+        notas: datos.notas || ''
+      });
+    return idCarta;
+  }
+
+  // Duplica una carta (carta + secciones + productos) dentro de la misma empresa.
+  // Aplica un modificador % a los precios y redondea según la carta nueva.
+  // La carta nueva queda en 'borrador'. Genera todos los IDs en Firestore.
+  async function duplicarCarta(idEmpresa, idOrigen, nombreNueva, modificador) {
+    const empRef = db().collection('empresas').doc(idEmpresa);
+    const origRef = empRef.collection('cartas').doc(idOrigen);
+    const origSnap = await origRef.get();
+    if (!origSnap.exists) throw new Error('Carta de origen no encontrada: ' + idOrigen);
+    const orig = origSnap.data();
+
+    const redondeo = orig.redondeo || '10';
+    const template = orig.template || 'minimalista';
+    const factor = 1 + ((parseFloat(modificador) || 0) / 100);
+
+    // 1) Carta nueva (borrador), copiando metadatos del origen.
+    const idNueva = await generarId('CAR');
+    const nuevaRef = empRef.collection('cartas').doc(idNueva);
+    await nuevaRef.set({
+      id_empresa: idEmpresa,
+      nombre: nombreNueva,
+      descripcion: orig.descripcion || '',
+      redondeo: redondeo,
+      template: template,
+      estado: 'borrador',
+      pie_direccion: orig.pie_direccion || '',
+      pie_telefono: orig.pie_telefono || '',
+      pie_mail: orig.pie_mail || '',
+      notas: orig.notas || ''
+    });
+
+    // 2) Secciones (mapeo id viejo -> id nuevo).
+    const seccSnap = await origRef.collection('secciones').get();
+    const mapeoSecciones = {};
+    for (const d of seccSnap.docs) {
+      const s = d.data();
+      const idSecNuevo = await generarId('SCC');
+      mapeoSecciones[d.id] = idSecNuevo;
+      await nuevaRef.collection('secciones').doc(idSecNuevo).set({
+        nombre: s.nombre || '',
+        descripcion: s.descripcion || '',
+        foto_url: s.foto_url || '',
+        orden: s.orden || 0
+      });
+    }
+
+    // 3) Productos (precio modificado + redondeado; preserva visibilidad).
+    const prodSnap = await origRef.collection('productos').get();
+    let productosCopiados = 0;
+    for (const d of prodSnap.docs) {
+      const p = d.data();
+      const idSecNuevo = mapeoSecciones[p.id_seccion];
+      if (!idSecNuevo) continue;
+      const precioFinal = _redondearPrecio((parseFloat(p.precio) || 0) * factor, redondeo);
+      const estadoVis = p.estado_visibilidad || (p.disponible_hoy ? 'visible' : 'oculto');
+      const idProdNuevo = await generarId('PRD');
+      await nuevaRef.collection('productos').doc(idProdNuevo).set({
+        id_seccion: idSecNuevo,
+        nombre: p.nombre || '',
+        descripcion: p.descripcion || '',
+        precio: precioFinal,
+        foto_url: p.foto_url || '',
+        etiquetas: p.etiquetas || { alergenos: [], vegetariano: false, sin_tacc: false, picante: false },
+        estado_visibilidad: estadoVis,
+        disponible_hoy: estadoVis === 'visible',
+        orden: p.orden || 0
+      });
+      productosCopiados++;
+    }
+
+    return {
+      id_carta_nueva: idNueva,
+      secciones_copiadas: seccSnap.size,
+      productos_copiados: productosCopiados
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -324,6 +469,10 @@
     crearProducto: crearProducto,
     eliminarProducto: eliminarProducto,
     leerCartaCompleta: leerCartaCompleta,
+    listarCartas: listarCartas,
+    actualizarCarta: actualizarCarta,
+    crearCarta: crearCarta,
+    duplicarCarta: duplicarCarta,
     actualizarSeccion: actualizarSeccion,
     crearSeccion: crearSeccion,
     eliminarSeccionConProductos: eliminarSeccionConProductos,
