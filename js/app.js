@@ -1853,7 +1853,12 @@ const AdminApp = (function() {
 
   // ── Eliminar mesa (con guarda de "no la última" en backend) ──
   async function eliminarMesa(idMesa, numeroMesa) {
-    if (!confirm('¿Eliminar la mesa "' + numeroMesa + '"?\n\nSu QR dejará de funcionar.')) return;
+    const ok = await AdminUI.confirm({
+      title: 'Eliminar mesa',
+      message: '¿Eliminar la mesa "' + numeroMesa + '"? Su QR dejará de funcionar.',
+      okLabel: 'Eliminar', cancelLabel: 'Cancelar'
+    });
+    if (!ok) return;
     try {
       await window.GCFirestore.eliminarMesa(
         state.idEmpresaActiva, state.sectoresContexto.idLocal, idMesa);
@@ -1868,9 +1873,14 @@ const AdminApp = (function() {
   // ── Eliminar sector (cascada: se lleva sus mesas) ──
   async function eliminarSector(idSector, nombreSector, cantMesas) {
     const aviso = cantMesas > 0
-      ? '¿Eliminar el sector "' + nombreSector + '" y sus ' + cantMesas + ' mesa(s)?\n\nLos QR de esas mesas dejarán de funcionar.'
+      ? '¿Eliminar el sector "' + nombreSector + '" y sus ' + cantMesas + ' mesa(s)? Los QR de esas mesas dejarán de funcionar.'
       : '¿Eliminar el sector "' + nombreSector + '"?';
-    if (!confirm(aviso)) return;
+    const ok = await AdminUI.confirm({
+      title: 'Eliminar sector',
+      message: aviso,
+      okLabel: 'Eliminar', cancelLabel: 'Cancelar'
+    });
+    if (!ok) return;
     try {
       // Borrado lógico + cascada a mesas + baja de sus tokens (QR dejan de resolver).
       await window.GCFirestore.eliminarSector(
