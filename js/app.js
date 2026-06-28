@@ -1835,14 +1835,17 @@ const AdminApp = (function() {
 
     const okBtn = document.getElementById('modal-sect-ok');
     okBtn.disabled = true;
-    const resp = await AdminAPI.mesaCrear(idSector, num, '', cap);
-    okBtn.disabled = false;
-
-    if (!resp.ok) {
-      status.textContent = resp.error || 'No pudimos crear la mesa';
+    try {
+      await window.GCFirestore.crearMesa(
+        state.idEmpresaActiva, state.sectoresContexto.idLocal, idSector,
+        { numero: num, capacidad: cap });
+    } catch (e) {
+      okBtn.disabled = false;
+      status.textContent = (e && e.message) || 'No pudimos crear la mesa';
       status.style.color = '#f87171';
       return;
     }
+    okBtn.disabled = false;
     cerrarModalSectores();
     AdminUI.toast('Mesa creada', 'info');
     await cargarSectores();
@@ -1851,9 +1854,11 @@ const AdminApp = (function() {
   // ── Eliminar mesa (con guarda de "no la última" en backend) ──
   async function eliminarMesa(idMesa, numeroMesa) {
     if (!confirm('¿Eliminar la mesa "' + numeroMesa + '"?\n\nSu QR dejará de funcionar.')) return;
-    const resp = await AdminAPI.mesaEliminar(idMesa);
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos eliminar la mesa', 'error');
+    try {
+      await window.GCFirestore.eliminarMesa(
+        state.idEmpresaActiva, state.sectoresContexto.idLocal, idMesa);
+    } catch (e) {
+      AdminUI.toast((e && e.message) || 'No pudimos eliminar la mesa', 'error');
       return;
     }
     AdminUI.toast('Mesa eliminada', 'info');
@@ -2163,14 +2168,17 @@ const AdminApp = (function() {
 
     const okBtn = document.getElementById('modal-sect-ok');
     okBtn.disabled = true;
-    const resp = await AdminAPI.mesaActualizar(idMesa, { numero: num, capacidad: cap });
-    okBtn.disabled = false;
-
-    if (!resp.ok) {
-      status.textContent = resp.error || 'No pudimos guardar la mesa';
+    try {
+      await window.GCFirestore.actualizarMesa(
+        state.idEmpresaActiva, state.sectoresContexto.idLocal, idMesa,
+        { numero: num, capacidad: cap });
+    } catch (e) {
+      okBtn.disabled = false;
+      status.textContent = (e && e.message) || 'No pudimos guardar la mesa';
       status.style.color = '#f87171';
       return;
     }
+    okBtn.disabled = false;
     cerrarModalSectores();
     AdminUI.toast('Mesa actualizada', 'info');
     await cargarSectores();

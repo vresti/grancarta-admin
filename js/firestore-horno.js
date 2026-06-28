@@ -666,6 +666,68 @@
     return { id_sector: idSector, mesas_eliminadas: mesasEliminadas };
   }
 
+  // Crea una mesa suelta en un sector existente (reemplaza el GAS mesa_crear).
+  // El token hereda el audience (canal) del sector. Valida sector vivo.
+  async function crearMesa(idEmpresa, idLocal, idSector, datos) {
+    const secRef = db().collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal)
+      .collection('sectores').doc(idSector);
+    const secSnap = await secRef.get();
+    if (!secSnap.exists) throw new Error('Sector no encontrado');
+    const s = secSnap.data();
+    if (s.estado === 'eliminado') throw new Error('No podés agregar mesas a un sector eliminado');
+
+    const mesa = await _crearMesaDoc(idEmpresa, idLocal, idSector, (s.audience_slug || ''),
+      datos.numero, datos.capacidad, (datos.nombreVisible || null));
+    return { id_mesa: mesa.idMesa };
+  }
+
+  // Actualiza número y/o capacidad de una mesa (lo único que el front edita).
+  // NO regenera el token (el QR impreso sigue válido) ni mueve de sector.
+  async function actualizarMesa(idEmpresa, idLocal, idMesa, campos) {
+    const locRef = db().collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
+    const patch = {};
+    if (campos.numero !== undefined) {
+      const v = String(campos.numero).trim();
+      if (v.length < 1) throw new Error('El identificador de la mesa no puede estar vacío');
+      if (await _numeroMesaRepetido(locRef, v, idMesa)) {
+        throw new Error('Ya existe otra mesa "' + v + '" en este local. Los identificadores no se pueden repetir.');
+      }
+      patch.numero = v;
+    }
+    if (campos.capacidad !== undefined) {
+      const cap = String(campos.capacidad).trim();
+      patch.capacidad = cap === '' ? null : (parseInt(cap, 10) || null);
+    }
+    if (Object.keys(patch).length === 0) throw new Error('Sin cambios para aplicar');
+    await locRef.collection('mesas').doc(idMesa).update(patch);
+    return { id_mesa: idMesa, cambios: patch };
+  }
+
+  // Elimina una mesa (borrado lógico) + baja su token (el QR deja de resolver).
+  // GUARDA: no se puede eliminar la ÚLTIMA mesa viva del sector (quedaría sin QR).
+  async function eliminarMesa(idEmpresa, idLocal, idMesa) {
+    const D = db();
+    const locRef = D.collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
+    const mesaRef = locRef.collection('mesas').doc(idMesa);
+    const mesaSnap = await mesaRef.get();
+    if (!mesaSnap.exists) throw new Error('Mesa no encontrada');
+    const m = mesaSnap.data();
+    if (m.estado === 'eliminada') throw new Error('La mesa ya estaba eliminada');
+
+    // Guarda: contar mesas vivas del sector. Si esta es la única, no se elimina.
+    const enSector = await locRef.collection('mesas').where('id_sector', '==', m.id_sector).get();
+    const vivas = enSector.docs.filter(function (d) { return d.data().estado !== 'eliminada'; }).length;
+    if (vivas <= 1) {
+      throw new Error('No podés eliminar la única mesa del sector (quedaría sin QR para escanear). Si querés que el sector desaparezca, eliminá el sector entero.');
+    }
+
+    const batch = D.batch();
+    batch.update(mesaRef, { estado: 'eliminada' });
+    if (m.token_qr) batch.delete(D.collection('tokens_mesa').doc(m.token_qr));
+    await batch.commit();
+    return { id_mesa: idMesa };
+  }
+
   // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
@@ -783,6 +845,9 @@
     crearSector: crearSector,
     actualizarSector: actualizarSector,
     eliminarSector: eliminarSector,
+    crearMesa: crearMesa,
+    actualizarMesa: actualizarMesa,
+    eliminarMesa: eliminarMesa,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
