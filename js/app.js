@@ -1958,17 +1958,13 @@ const AdminApp = (function() {
     const idEmpresa = state.idEmpresaActiva || null;
 
     let canales = [];
-    const respPub = await AdminAPI.publicacionListar(idEmpresa, ctx.idLocal);
-    if (respPub && respPub.ok && Array.isArray(respPub.publicaciones)) {
-      // Cada publicación tiene audience_slug y un nombre de canal
-      canales = respPub.publicaciones.map(function(p) {
-        const slug = (p.audience_slug || p.Audience_Slug || '').trim();
-        return {
-          slug: slug,
-          label: slug ? (p.nombre_canal || p.Nombre_Canal || slug) : 'Principal'
-        };
+    try {
+      const pubs = await window.GCFirestore.listarPublicaciones(idEmpresa, ctx.idLocal);
+      canales = pubs.map(function(p) {
+        const slug = (p.audience_slug || '').trim();
+        return { slug: slug, label: slug ? (p.nombre_canal || slug) : 'Principal' };
       });
-    }
+    } catch (e) { canales = []; }
     // Fallback: si no vinieron canales, al menos el actual
     if (canales.length === 0) {
       canales = [{ slug: ctx.audienceSlug || '', label: ctx.nombreCanal || 'Principal' }];
@@ -2019,9 +2015,12 @@ const AdminApp = (function() {
       wrap.style.display = 'none';
       return;
     }
-    // Traer los sectores del local y filtrar por el canal elegido
-    const resp = await AdminAPI.sectorListar(ctx.idLocal, false);
-    let sectores = (resp && resp.ok && resp.sectores) ? resp.sectores : [];
+    // Traer los sectores del local (Firestore) y filtrar por el canal elegido
+    let sectores = [];
+    try {
+      const resp = await window.GCFirestore.listarSectores(state.idEmpresaActiva, ctx.idLocal);
+      sectores = resp.sectores || [];
+    } catch (e) { sectores = []; }
     sectores = sectores.filter(function(s) {
       return (s.Audience_Slug || '') === canalSel;
     });
@@ -2046,9 +2045,12 @@ const AdminApp = (function() {
     const audienceSlug = (canalSel === '__todos') ? null : canalSel;
     const idSector = (sectorSel && sectorSel !== '__todos') ? sectorSel : null;
 
-    const resp = await AdminAPI.localObtenerQrsImprimir(ctx.idLocal, audienceSlug, idSector);
-    if (!resp || !resp.ok) {
-      if (status) { status.textContent = (resp && resp.error) || 'No pudimos traer las mesas'; status.style.color = '#f87171'; }
+    let resp;
+    try {
+      resp = await window.GCFirestore.qrsImprimir(state.idEmpresaActiva, ctx.idLocal,
+        { audienceSlug: audienceSlug, idSector: idSector });
+    } catch (e) {
+      if (status) { status.textContent = (e && e.message) || 'No pudimos traer las mesas'; status.style.color = '#f87171'; }
       return;
     }
     if (!resp.mesas || resp.mesas.length === 0) {
@@ -2239,19 +2241,23 @@ const AdminApp = (function() {
       return;
     }
     AdminUI.setLoading(true);
-    // La URL pública del QR la arma el backend (mesa→sector→canal→local→empresa→slugs).
-    // Siempre lleva ?t=<token>; apunta a la carta oficial del worker.
-    const resp = await AdminAPI.mesaObtenerUrlQr(idMesa);
-    AdminUI.setLoading(false);
-
-    if (!resp.ok || !resp.url_qr) {
-      AdminUI.toast(resp.error || 'No pudimos armar la URL del QR', 'error');
+    // La URL pública del QR se arma en vivo desde Firestore (mesa→sector→canal +
+    // slugs de empresa/local). Siempre lleva ?t=<token>; apunta al worker.
+    let urlQr;
+    try {
+      const r = await window.GCFirestore.urlQrMesa(state.idEmpresaActiva, state.sectoresContexto.idLocal, idMesa);
+      urlQr = r.url_qr;
+    } catch (e) {
+      AdminUI.setLoading(false);
+      AdminUI.toast((e && e.message) || 'No pudimos armar la URL del QR', 'error');
       return;
     }
+    AdminUI.setLoading(false);
+
     // El "título" del QR es el identificador de la mesa + su sector,
     // para que el dueño sepa qué QR imprimió: "Mesa 5 · Piso 2".
     const titulo = (numeroMesa || 'Mesa') + (nombreSector ? ' · ' + nombreSector : '');
-    descargarQrLocal(resp.url_qr, titulo);
+    descargarQrLocal(urlQr, titulo);
   }
 
   // ── Renombrar canal ("Espacio X") desde el breadcrumb ──

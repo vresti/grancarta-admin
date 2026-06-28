@@ -729,6 +729,128 @@
   }
 
   // ---------------------------------------------------------------------------
+  // QR — URLs públicas EN VIVO (reemplaza el GAS mesa_obtener_url_qr / qrs_imprimir).
+  // La mesa NO guarda URL: se arma con los slugs de empresa/local + canal del sector.
+  // Forma: grancarta.com/<empSlug>/<locSlug>[/<canal>]?t=<token>  (la lee el Worker).
+  // ---------------------------------------------------------------------------
+  const QR_BASE_PUBLICA = 'https://grancarta.com';
+
+  function _armarUrlQr(empresaSlug, localSlug, audienceSlug, token) {
+    let url = QR_BASE_PUBLICA + '/' + empresaSlug + '/' + localSlug;
+    if (audienceSlug) url += '/' + audienceSlug;
+    url += '?t=' + encodeURIComponent(token);
+    return url;
+  }
+
+  // URL pública del QR de UNA mesa (para el botón "descargar QR").
+  async function urlQrMesa(idEmpresa, idLocal, idMesa) {
+    const D = db();
+    const empRef = D.collection('empresas').doc(idEmpresa);
+    const locRef = empRef.collection('locales').doc(idLocal);
+
+    const mesaSnap = await locRef.collection('mesas').doc(idMesa).get();
+    if (!mesaSnap.exists || mesaSnap.data().estado === 'eliminada') throw new Error('Mesa no encontrada');
+    const m = mesaSnap.data();
+
+    const empSnap = await empRef.get();
+    const locSnap = await locRef.get();
+    const empresaSlug = String((empSnap.data() || {}).slug || '').trim();
+    const localSlug = String((locSnap.data() || {}).slug || '').trim();
+    if (!empresaSlug || !localSlug) throw new Error('Falta el slug de empresa o local para armar la URL pública');
+
+    // El canal (audience) lo aporta el SECTOR de la mesa.
+    let audienceSlug = '';
+    if (m.id_sector) {
+      const secSnap = await locRef.collection('sectores').doc(m.id_sector).get();
+      if (secSnap.exists && secSnap.data().estado !== 'eliminado') {
+        audienceSlug = String(secSnap.data().audience_slug || '').trim().toLowerCase();
+      }
+    }
+    return { url_qr: _armarUrlQr(empresaSlug, localSlug, audienceSlug, m.token_qr), token: m.token_qr };
+  }
+
+  // Todas las mesas de un local para la hoja A4 de QRs, con filtros canal/sector.
+  // filtros: { audienceSlug?, idSector? } (idSector gana sobre audienceSlug).
+  async function qrsImprimir(idEmpresa, idLocal, filtros) {
+    const D = db();
+    const empRef = D.collection('empresas').doc(idEmpresa);
+    const locRef = empRef.collection('locales').doc(idLocal);
+
+    const empSnap = await empRef.get();
+    const locSnap = await locRef.get();
+    const emp = empSnap.data() || {}, loc = locSnap.data() || {};
+    const empresaSlug = String(emp.slug || '').trim();
+    const localSlug = String(loc.slug || '').trim();
+    if (!empresaSlug || !localSlug) throw new Error('Falta el slug de empresa o local para armar las URLs');
+
+    const filtroAudience = (filtros && filtros.audienceSlug != null)
+      ? String(filtros.audienceSlug).trim().toLowerCase() : null;
+    const filtroSector = (filtros && filtros.idSector) ? String(filtros.idSector).trim() : '';
+
+    // Sectores vivos → mapa id → { nombre, audience_slug }.
+    const secSnap = await locRef.collection('sectores').get();
+    const sectorPorId = {};
+    secSnap.docs.forEach(function (d) {
+      const s = d.data();
+      if (s.estado === 'eliminado') return;
+      sectorPorId[d.id] = { nombre: s.nombre || '', audience_slug: String(s.audience_slug || '').trim().toLowerCase() };
+    });
+
+    // Mesas vivas (con sector existente), aplicando filtros.
+    const mesasSnap = await locRef.collection('mesas').get();
+    let mesas = mesasSnap.docs
+      .map(function (d) { return { id: d.id, data: d.data() }; })
+      .filter(function (x) {
+        return x.data.estado !== 'eliminada' && x.data.id_sector && sectorPorId[x.data.id_sector];
+      });
+    if (filtroSector) {
+      mesas = mesas.filter(function (x) { return x.data.id_sector === filtroSector; });
+    } else if (filtroAudience !== null) {
+      mesas = mesas.filter(function (x) { return sectorPorId[x.data.id_sector].audience_slug === filtroAudience; });
+    }
+
+    const out = mesas.map(function (x) {
+      const m = x.data;
+      const sec = sectorPorId[m.id_sector];
+      const audienceSlug = sec.audience_slug;
+      return {
+        id_mesa: x.id,
+        numero: m.numero,
+        nombre_visible: m.nombre_visible || m.numero,
+        sector_nombre: sec.nombre,
+        id_sector: m.id_sector,
+        audience_slug: audienceSlug,
+        canal_label: audienceSlug ? audienceSlug.replace(/-/g, ' ') : 'Principal',
+        url_qr: _armarUrlQr(empresaSlug, localSlug, audienceSlug, m.token_qr),
+        token: m.token_qr
+      };
+    });
+
+    // Orden: por nombre de sector, luego por número de mesa (natural).
+    out.sort(function (a, b) {
+      if (a.sector_nombre !== b.sector_nombre) return a.sector_nombre.localeCompare(b.sector_nombre, 'es');
+      return _compararNatural(String(a.numero), String(b.numero));
+    });
+
+    return {
+      empresa: { nombre: emp.nombre_comercial || emp.razon_social || '', slug: empresaSlug },
+      local: { nombre: loc.nombre || '', slug: localSlug },
+      total: out.length,
+      mesas: out
+    };
+  }
+
+  // Publicaciones (canales) ACTIVAS de un local, para el dropdown del modal imprimir.
+  async function listarPublicaciones(idEmpresa, idLocal) {
+    const snap = await db().collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal)
+      .collection('publicaciones').where('estado', '==', 'activa').get();
+    return snap.docs.map(function (d) {
+      const p = d.data();
+      return { audience_slug: String(p.audience_slug || '').trim(), nombre_canal: p.nombre_canal || '' };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -848,6 +970,9 @@
     crearMesa: crearMesa,
     actualizarMesa: actualizarMesa,
     eliminarMesa: eliminarMesa,
+    urlQrMesa: urlQrMesa,
+    qrsImprimir: qrsImprimir,
+    listarPublicaciones: listarPublicaciones,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
