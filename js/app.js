@@ -1906,6 +1906,18 @@ const AdminApp = (function() {
       if (status) { status.textContent = resp.error || 'No pudimos guardar'; status.style.color = '#f87171'; }
       return;
     }
+    // Espejo a Firestore: el comensal lee botones_activos de Firestore, no de la
+    // planilla. Sin esto, el toggle del admin no le llega (hueco confirmado 28/6).
+    try {
+      const idEmpresa = state.idEmpresaActiva || null;
+      const idLocal = (state.sectoresContexto && state.sectoresContexto.idLocal) || null;
+      if (idEmpresa && idLocal) {
+        await window.GCFirestore.toggleBotonesSector(idEmpresa, idLocal, idSector, activo, alcance);
+      }
+    } catch (e) {
+      console.warn('[toggle] espejo a Firestore falló:', e);
+      AdminUI.toast('Guardado, pero el cambio puede tardar en verse en la carta del cliente', 'error');
+    }
     // Restaurar el botón Guardar para futuros usos del modal genérico
     const okBtn = document.getElementById('modal-sect-ok');
     if (okBtn) okBtn.style.display = '';

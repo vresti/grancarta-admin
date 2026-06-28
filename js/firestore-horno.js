@@ -367,6 +367,31 @@
   }
 
   // ---------------------------------------------------------------------------
+  // SECTORES — toggle de botones de atención (espejo a Firestore).
+  // El comensal lee empresas/{emp}/locales/{loc}/sectores/{sec}.botones_activos
+  // de Firestore; GAS solo escribía la planilla, así que el cambio no le llegaba.
+  // Esto refleja el toggle en Firestore para cerrar ese hueco.
+  //   alcance 'sector'   → solo ese sector.
+  //   alcance 'sucursal' → todos los sectores del local.
+  // ---------------------------------------------------------------------------
+  async function toggleBotonesSector(idEmpresa, idLocal, idSector, activo, alcance) {
+    const D = db();
+    const sectoresRef = D
+      .collection('empresas').doc(idEmpresa)
+      .collection('locales').doc(idLocal)
+      .collection('sectores');
+    if (alcance === 'sucursal') {
+      const snap = await sectoresRef.get();
+      const batch = D.batch();
+      snap.docs.forEach(function (d) { batch.update(d.ref, { botones_activos: !!activo }); });
+      await batch.commit();
+      return { actualizados: snap.size };
+    }
+    await sectoresRef.doc(idSector).update({ botones_activos: !!activo });
+    return { actualizados: 1 };
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -478,6 +503,7 @@
     eliminarSeccionConProductos: eliminarSeccionConProductos,
     intercambiarOrdenSecciones: intercambiarOrdenSecciones,
     intercambiarOrdenProductos: intercambiarOrdenProductos,
+    toggleBotonesSector: toggleBotonesSector,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
