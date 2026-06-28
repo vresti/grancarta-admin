@@ -1591,17 +1591,21 @@ const AdminApp = (function() {
     if (!ctx) return;
 
     AdminUI.setLoading(true);
-    const resp = await AdminAPI.sectorListar(ctx.idLocal, true); // incluir_mesas
-    AdminUI.setLoading(false);
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cargar los sectores', 'error');
+    let todos = [];
+    try {
+      // Firestore-primero: lee sectores + mesas + canal del local desde Firestore
+      // (reemplaza el GAS sector_listar). Solo lectura, no escribe nada.
+      const resp = await window.GCFirestore.listarSectores(state.idEmpresaActiva, ctx.idLocal);
+      todos = resp.sectores || [];
+    } catch (e) {
+      AdminUI.setLoading(false);
+      AdminUI.toast((e && e.message) || 'No pudimos cargar los sectores', 'error');
       return;
     }
+    AdminUI.setLoading(false);
 
     // Filtrar SOLO los sectores de ESTE canal (audience_slug del contexto).
-    // El backend devuelve todos los del local; acá nos quedamos con los del canal.
-    const todos = resp.sectores || [];
+    // El horno devuelve todos los del local; acá nos quedamos con los del canal.
     ctx.sectores = todos.filter(function(s) {
       return (s.Audience_Slug || '') === ctx.audienceSlug;
     });

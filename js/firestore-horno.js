@@ -392,6 +392,99 @@
   }
 
   // ---------------------------------------------------------------------------
+  // SECTORES — listado enriquecido (reemplaza el GAS sector_listar, SOLO LECTURA).
+  // Arma la forma PascalCase que espera renderSectores en el admin, fiel al GAS:
+  //   · sectores: filtra estado != 'eliminado', ordena por orden
+  //   · mesas:    filtra estado != 'eliminada', agrupa por sector, orden natural
+  //   · canal:    cruza audience_slug del sector contra las publicaciones ACTIVAS
+  //               del local → canal_existe + carta_nombre (nombre de la carta).
+  // Url_Completa_QR queda '' (el listado no la muestra; el QR real es otro paso).
+  // ---------------------------------------------------------------------------
+  function _compararNatural(a, b) {
+    return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b),
+      undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  async function listarSectores(idEmpresa, idLocal) {
+    const D = db();
+    const locRef = D.collection('empresas').doc(idEmpresa)
+      .collection('locales').doc(idLocal);
+
+    // 1) Publicaciones activas → mapa audience_slug → carta publicada.
+    const pubsSnap = await locRef.collection('publicaciones')
+      .where('estado', '==', 'activa').get();
+    const canalPorSlug = {};
+    const cartaIds = {};
+    pubsSnap.docs.forEach(function (d) {
+      const p = d.data();
+      const slug = p.audience_slug || '';
+      canalPorSlug[slug] = { id_carta: p.id_carta || '' };
+      if (p.id_carta) cartaIds[p.id_carta] = true;
+    });
+
+    // 2) Nombre de cada carta publicada (una lectura por carta distinta).
+    const cartaNombre = {};
+    await Promise.all(Object.keys(cartaIds).map(async function (cid) {
+      const cs = await D.collection('empresas').doc(idEmpresa)
+        .collection('cartas').doc(cid).get();
+      cartaNombre[cid] = cs.exists ? (cs.data().nombre || '') : '';
+    }));
+
+    // 3) Mesas vivas del local, agrupadas por sector.
+    const mesasSnap = await locRef.collection('mesas').get();
+    const mesasPorSector = {};
+    mesasSnap.docs.forEach(function (d) {
+      const m = d.data();
+      if (m.estado === 'eliminada') return;
+      const sec = m.id_sector || '';
+      if (!mesasPorSector[sec]) mesasPorSector[sec] = [];
+      mesasPorSector[sec].push({
+        Id_Mesa: d.id,
+        Numero: m.numero,
+        Nombre_Visible: m.nombre_visible || '',
+        Capacidad: m.capacidad || '',
+        Token_QR: m.token_qr || '',
+        Url_Completa_QR: '',          // se resuelve en vivo en el paso de QR
+        Estado: m.estado || 'activa'
+      });
+    });
+
+    // 4) Sectores vivos, ordenados y enriquecidos con su canal/carta.
+    const secSnap = await locRef.collection('sectores').get();
+    const sectores = secSnap.docs
+      .map(function (d) { return { id: d.id, data: d.data() }; })
+      .filter(function (x) { return x.data.estado !== 'eliminado'; })
+      .sort(function (a, b) {
+        return (parseInt(a.data.orden, 10) || 0) - (parseInt(b.data.orden, 10) || 0);
+      })
+      .map(function (x) {
+        const s = x.data;
+        const slug = s.audience_slug || '';
+        const canal = canalPorSlug[slug] || null;
+        const mesas = (mesasPorSector[x.id] || []).sort(function (m1, m2) {
+          return _compararNatural(m1.Numero, m2.Numero);
+        });
+        return {
+          Id_Sector: x.id,
+          Id_Local: s.id_local || idLocal,
+          Nombre: s.nombre || '',
+          Color_Hex: s.color_hex || '#1B2B4A',
+          Orden: s.orden,
+          Estado: s.estado || 'activo',
+          Audience_Slug: slug,
+          Botones_Activos: s.botones_activos === true,
+          canal_nombre: slug || '(default)',
+          canal_existe: !!canal,
+          carta_nombre: canal ? (cartaNombre[canal.id_carta] || '') : '',
+          cantidad_mesas: mesas.length,
+          mesas: mesas
+        };
+      });
+
+    return { sectores: sectores, cantidad: sectores.length };
+  }
+
+  // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
   // ---------------------------------------------------------------------------
@@ -504,6 +597,7 @@
     intercambiarOrdenSecciones: intercambiarOrdenSecciones,
     intercambiarOrdenProductos: intercambiarOrdenProductos,
     toggleBotonesSector: toggleBotonesSector,
+    listarSectores: listarSectores,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
