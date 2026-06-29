@@ -117,60 +117,6 @@ const AdminAPI = (function() {
       return llamar('local_obtener', { id_local: idLocal });
     },
 
-    localActualizar(idLocal, cambios) {
-      return llamar('local_actualizar', {
-        id_local: idLocal,
-        ...cambios
-      });
-    },
-
-    /**
-     * Devuelve locales de la empresa enriquecidos con carta activa + URL pública
-     * + cartas disponibles para hacer switch.
-     * Una sola llamada da todo lo necesario para la UI del dashboard.
-     */
-    localListarConCarta(idEmpresa) {
-      return llamar('local_listar_con_carta', { id_empresa: idEmpresa });
-    },
-
-    // ---- Publicaciones (modelo D — día 9, 18/5/2026) ----
-    // Una publicación = una carta sirviendo en una URL pública.
-    // Un local puede tener N publicaciones (default + audiences).
-    /**
-     * Lista publicaciones activas de una empresa, enriquecidas con
-     * nombre del local, nombre de la carta y URL pública (incluye audience_slug).
-     *
-     * @param {string} idEmpresa - obligatorio
-     * @param {string} idLocal - opcional, filtra a un solo local
-     * @returns { ok, publicaciones[], cantidad, agrupado_por_local[], cartas_catalogo[], empresa }
-     */
-    publicacionListar(idEmpresa, idLocal = null) {
-      const params = idLocal
-        ? { id_empresa: idEmpresa, id_local: idLocal }
-        : { id_empresa: idEmpresa };
-      return llamar('publicacion_listar', params);
-    },
-
-    /**
-     * Activa una carta del catálogo en un canal específico de un local.
-     * (A2.2 — día 10): swap atómico in-place o creación de canal nuevo.
-     *
-     * Si el canal ya tenía una carta, queda automáticamente "lista para
-     * publicar" (vuelve al catálogo standby). El canal NUNCA queda vacío.
-     *
-     * @param {string} idLocal       - obligatorio
-     * @param {string} audienceSlug  - '' = canal default, 'delivery'/'almuerzo'/etc
-     * @param {string} idCartaNueva  - obligatorio
-     * @returns { ok, id_publicacion, id_carta_anterior, id_carta_nueva, canal_creado, mensaje }
-     */
-    publicacionActivarCarta(idLocal, audienceSlug, idCartaNueva) {
-      return llamar('publicacion_activar_carta', {
-        id_local: idLocal,
-        audience_slug: audienceSlug || '',
-        id_carta_nueva: idCartaNueva
-      });
-    },
-
     // ---- Cartas (Editor de Carta) ----
     cartaListar(idEmpresa, incluirArchivadas = false) {
       return llamar('carta_listar', {
@@ -333,17 +279,6 @@ const AdminAPI = (function() {
     //      Las funciones GAS sector_*/mesa_*/local_obtener_qrs_imprimir se retiraron de
     //      este cliente (sin consumidores). El Script 13 de GAS queda sin uso. ----
 
-    // ---- Nombre de canal (Script 10 v2.1 — 16/6/2026) ----
-
-    /**
-     * Renombra un canal (publicación). El front lo muestra como "Espacio "+nombre.
-     */
-    publicacionRenombrarCanal(idPublicacion, nombreCanal) {
-      return llamar('publicacion_actualizar', {
-        id_publicacion: idPublicacion,
-        nombre_canal: nombreCanal
-      });
-    }
   };
 
 })();
