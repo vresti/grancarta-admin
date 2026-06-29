@@ -945,6 +945,254 @@
     return { locales: localesConEstaCarta.length, canales: total };
   }
 
+  // ===========================================================================
+  // PUBLICACIONES (ABM) — Firestore-primero. Cada escritura RE-HORNEA
+  // menus_publicados (lo que ve el comensal). Réplica de las invariantes del
+  // GAS Script 10: I2 (un default activo por local), I3 (un activo por canal),
+  // carta de la misma empresa + 'activa', idempotencia, reasignación de default.
+  // ===========================================================================
+
+  const _PUB_SLUGS_RESERVADOS = ['admin', 'api', 'app', 'static', 'assets', 'health', 'qr', 'm', 'c'];
+  const _PUB_SLUG_RX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+  function _normSlug(s) { return s ? String(s).trim().toLowerCase() : ''; }
+
+  function _validarSlugPub(slug) {
+    if (slug === '') return;                       // '' = canal default, válido
+    if (slug.length > 32 || !_PUB_SLUG_RX.test(slug)) {
+      throw new Error('Slug inválido. Solo minúsculas, números y guiones (ej: "delivery").');
+    }
+    if (_PUB_SLUGS_RESERVADOS.indexOf(slug) !== -1) throw new Error('Slug reservado por el sistema: "' + slug + '"');
+  }
+
+  function _nombreCanalDesdeSlug(slug) {
+    const s = _normSlug(slug);
+    if (s === '') return 'Principal';
+    const t = s.replace(/-/g, ' ');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  function _pubRef(idEmpresa, idLocal) {
+    return db().collection('empresas').doc(idEmpresa)
+      .collection('locales').doc(idLocal).collection('publicaciones');
+  }
+
+  async function _pubsDelLocal(idEmpresa, idLocal) {
+    const snap = await _pubRef(idEmpresa, idLocal).get();
+    return snap.docs.map(function (d) { return Object.assign({ Id_Publicacion: d.id }, d.data()); });
+  }
+
+  async function _cartaActivaOError(idEmpresa, idCarta) {
+    const cs = await db().collection('empresas').doc(idEmpresa).collection('cartas').doc(idCarta).get();
+    if (!cs.exists) throw new Error('Carta no encontrada: ' + idCarta);
+    const est = cs.data().estado || '';
+    if (est !== 'activa') throw new Error('La carta debe estar "lista para publicar". Estado actual: ' + est);
+    return cs.data();
+  }
+
+  // Desmarca la default activa del local (si la hay), excluyendo idExcluir.
+  async function _demoteDefault(idEmpresa, idLocal, pubs, idExcluir) {
+    const actual = pubs.find(function (p) {
+      return p.es_default === true && p.estado === 'activa' && p.Id_Publicacion !== idExcluir;
+    });
+    if (!actual) return null;
+    await _pubRef(idEmpresa, idLocal).doc(actual.Id_Publicacion).update({
+      es_default: false, fecha_modificacion: firebase.firestore.Timestamp.now()
+    });
+    return actual.Id_Publicacion;
+  }
+
+  // Lectura enriquecida para el admin (misma forma que daba dashboard_completo):
+  // { por_local: { idLocal: [pub...] }, cartas_catalogo: [...] }
+  async function listarPublicacionesEnriquecidas(idEmpresa) {
+    const D = db();
+    const empSnap = await D.collection('empresas').doc(idEmpresa).get();
+    const emp = empSnap.exists ? empSnap.data() : {};
+    const empSlug = emp.slug || '';
+
+    const localesSnap = await D.collection('empresas').doc(idEmpresa).collection('locales').get();
+    const locales = {};
+    localesSnap.docs.forEach(function (d) { locales[d.id] = d.data(); });
+
+    const cartasSnap = await D.collection('empresas').doc(idEmpresa).collection('cartas').get();
+    const cartas = {};
+    cartasSnap.docs.forEach(function (d) { cartas[d.id] = Object.assign({ id: d.id }, d.data()); });
+
+    const porLocal = {};
+    const cartasPublicadas = {};
+    for (const idLocal of Object.keys(locales)) {
+      const loc = locales[idLocal];
+      const pubs = await _pubsDelLocal(idEmpresa, idLocal);
+      pubs.filter(function (p) { return p.estado !== 'archivada'; }).forEach(function (p) {
+        if (p.estado === 'activa') cartasPublicadas[p.id_carta] = true;
+        const carta = cartas[p.id_carta] || {};
+        const slug = _normSlug(p.audience_slug);
+        let url = null;
+        if (empSlug && loc.slug) {
+          url = 'https://grancarta.com/' + empSlug + '/' + loc.slug;
+          if (slug) url += '/' + slug;
+        }
+        if (!porLocal[idLocal]) porLocal[idLocal] = [];
+        porLocal[idLocal].push({
+          Id_Publicacion: p.Id_Publicacion,
+          Id_Local: idLocal,
+          Id_Carta: p.id_carta,
+          Id_Empresa: idEmpresa,
+          Audience_Slug: slug,
+          Nombre_Canal: p.nombre_canal || _nombreCanalDesdeSlug(slug),
+          Es_Default: p.es_default === true,
+          Estado: p.estado,
+          local_nombre: loc.nombre || '',
+          local_slug: loc.slug || '',
+          carta_nombre: carta.nombre || '',
+          carta_template: carta.template || '',
+          carta_estado: carta.estado || '',
+          url_publica: url
+        });
+      });
+    }
+
+    const catalogo = Object.keys(cartas).map(function (id) { return cartas[id]; })
+      .filter(function (c) { return (c.estado || '') === 'activa'; })
+      .map(function (c) {
+        return {
+          Id_Carta: c.id, Nombre: c.nombre || '', Descripcion: c.descripcion || '',
+          Template: c.template || '', Tipo_Carta: c.tipo_carta || '',
+          esta_publicada: !!cartasPublicadas[c.id]
+        };
+      }).sort(function (a, b) {
+        if (a.esta_publicada !== b.esta_publicada) return a.esta_publicada ? 1 : -1;
+        return (a.Nombre || '').localeCompare(b.Nombre || '');
+      });
+
+    return { por_local: porLocal, cartas_catalogo: catalogo };
+  }
+
+  // Activar / cambiar la carta de un canal: swap in-place (canal existente) o
+  // canal nuevo. Después RE-HORNEA el local (el comensal pasa a ver la carta nueva).
+  async function activarCartaEnCanal(idEmpresa, idLocal, audienceSlug, idCartaNueva, nombreCanal) {
+    const slug = _normSlug(audienceSlug);
+    _validarSlugPub(slug);
+    await _cartaActivaOError(idEmpresa, idCartaNueva);
+
+    const pubs = await _pubsDelLocal(idEmpresa, idLocal);
+    const pubActual = pubs.find(function (p) {
+      return _normSlug(p.audience_slug) === slug && p.estado === 'activa';
+    });
+    const now = firebase.firestore.Timestamp.now();
+
+    if (pubActual) {
+      if (pubActual.id_carta === idCartaNueva) {
+        return { id_publicacion: pubActual.Id_Publicacion, canal_creado: false, sin_cambios: true };
+      }
+      await _pubRef(idEmpresa, idLocal).doc(pubActual.Id_Publicacion).update({
+        id_carta: idCartaNueva, fecha_modificacion: now
+      });
+      await hornearLocal(idEmpresa, idLocal);
+      return {
+        id_publicacion: pubActual.Id_Publicacion,
+        id_carta_anterior: pubActual.id_carta, id_carta_nueva: idCartaNueva, canal_creado: false
+      };
+    }
+
+    // Canal nuevo (necesita contadores/PUB sembrado; si falta, generarId tira error claro)
+    const hayDefault = pubs.some(function (p) { return p.es_default === true && p.estado === 'activa'; });
+    const esDefaultFinal = !hayDefault;
+    const nombre = (nombreCanal && String(nombreCanal).trim()) ? String(nombreCanal).trim() : _nombreCanalDesdeSlug(slug);
+    const idPub = await generarId('PUB');
+    await _pubRef(idEmpresa, idLocal).doc(idPub).set({
+      id_local: idLocal, id_carta: idCartaNueva, id_empresa: idEmpresa,
+      audience_slug: slug, es_default: esDefaultFinal, estado: 'activa',
+      plan_publicacion: 'trial', nombre_canal: nombre,
+      fecha_inicio: now, fecha_creacion: now, fecha_modificacion: now
+    });
+    await hornearLocal(idEmpresa, idLocal);
+    return { id_publicacion: idPub, canal_creado: true, es_default: esDefaultFinal };
+  }
+
+  // Renombrar el canal (Nombre_Canal). El nombre viaja al doc del comensal → rehornea.
+  async function renombrarCanal(idEmpresa, idLocal, idPublicacion, nombreCanal) {
+    const nombre = String(nombreCanal || '').trim();
+    if (!nombre) throw new Error('El nombre del canal no puede estar vacío');
+    if (nombre.length > 40) throw new Error('El nombre del canal no puede tener más de 40 caracteres');
+    await _pubRef(idEmpresa, idLocal).doc(idPublicacion).update({
+      nombre_canal: nombre, fecha_modificacion: firebase.firestore.Timestamp.now()
+    });
+    await hornearLocal(idEmpresa, idLocal);
+    return { id_publicacion: idPublicacion, nombre_canal: nombre };
+  }
+
+  // Crear una publicación nueva (canal nuevo). Paridad con GAS publicacion_crear.
+  // (No tiene UI viva hoy; queda para retirar GAS sin perder capacidad.)
+  async function crearPublicacion(idEmpresa, idLocal, idCarta, audienceSlug, esDefaultPed, nombreCanal) {
+    const slug = _normSlug(audienceSlug);
+    _validarSlugPub(slug);
+    await _cartaActivaOError(idEmpresa, idCarta);
+    const pubs = await _pubsDelLocal(idEmpresa, idLocal);
+    const conflicto = pubs.find(function (p) { return _normSlug(p.audience_slug) === slug && p.estado !== 'archivada'; });
+    if (conflicto) throw new Error('Ya existe una publicación para ese canal en este local (' + conflicto.Id_Publicacion + ')');
+    const hayDefault = pubs.some(function (p) { return p.es_default === true && p.estado === 'activa'; });
+    let esDefaultFinal = !!esDefaultPed;
+    if (!hayDefault) esDefaultFinal = true;
+    if (esDefaultFinal && hayDefault) await _demoteDefault(idEmpresa, idLocal, pubs, null);
+    const nombre = (nombreCanal && String(nombreCanal).trim()) ? String(nombreCanal).trim() : _nombreCanalDesdeSlug(slug);
+    const idPub = await generarId('PUB');
+    const now = firebase.firestore.Timestamp.now();
+    await _pubRef(idEmpresa, idLocal).doc(idPub).set({
+      id_local: idLocal, id_carta: idCarta, id_empresa: idEmpresa,
+      audience_slug: slug, es_default: esDefaultFinal, estado: 'activa',
+      plan_publicacion: 'trial', nombre_canal: nombre,
+      fecha_inicio: now, fecha_creacion: now, fecha_modificacion: now
+    });
+    await hornearLocal(idEmpresa, idLocal);
+    return { id_publicacion: idPub, es_default: esDefaultFinal };
+  }
+
+  // Despublicar (pausar/archivar). Paridad con GAS publicacion_despublicar.
+  // Reasigna el default a otra activa; BORRA el menus_publicados del canal que
+  // sale (el comensal deja de verlo) y rehornea el resto.
+  async function despublicarPublicacion(idEmpresa, idLocal, idPublicacion, accion) {
+    const acc = (accion === 'archivar') ? 'archivar' : 'pausar';
+    const estadoObjetivo = acc === 'pausar' ? 'pausada' : 'archivada';
+    const D = db();
+    const empSnap = await D.collection('empresas').doc(idEmpresa).get();
+    const locRef = D.collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
+    const locSnap = await locRef.get();
+    const emp = empSnap.exists ? empSnap.data() : {};
+    const loc = locSnap.exists ? locSnap.data() : {};
+
+    const pubs = await _pubsDelLocal(idEmpresa, idLocal);
+    const pub = pubs.find(function (p) { return p.Id_Publicacion === idPublicacion; });
+    if (!pub) throw new Error('Publicación no encontrada');
+    if (pub.estado === estadoObjetivo) return { id_publicacion: idPublicacion, sin_cambios: true };
+
+    let nuevoDefault = null;
+    if (pub.es_default === true) {
+      const otras = pubs.filter(function (p) { return p.Id_Publicacion !== idPublicacion && p.estado === 'activa'; });
+      if (otras.length === 0) throw new Error('No podés ' + acc + ' la única publicación activa del local. Activá otra carta primero.');
+      otras.sort(function (a, b) {
+        const fa = a.fecha_creacion && a.fecha_creacion.toMillis ? a.fecha_creacion.toMillis() : 0;
+        const fb = b.fecha_creacion && b.fecha_creacion.toMillis ? b.fecha_creacion.toMillis() : 0;
+        return fb - fa;
+      });
+      await _pubRef(idEmpresa, idLocal).doc(otras[0].Id_Publicacion).update({
+        es_default: true, fecha_modificacion: firebase.firestore.Timestamp.now()
+      });
+      nuevoDefault = otras[0].Id_Publicacion;
+    }
+
+    await _pubRef(idEmpresa, idLocal).doc(idPublicacion).update({
+      estado: estadoObjetivo, es_default: false, fecha_modificacion: firebase.firestore.Timestamp.now()
+    });
+
+    // El canal desaparece para el comensal → borrar sus 2 claves en menus_publicados
+    const audienceKey = _normSlug(pub.audience_slug) || 'default';
+    await D.collection('menus_publicados').doc(idLocal + '_' + audienceKey).delete().catch(function () {});
+    await D.collection('menus_publicados').doc((emp.slug || '') + '__' + (loc.slug || '') + '__' + audienceKey).delete().catch(function () {});
+    await hornearLocal(idEmpresa, idLocal);
+    return { id_publicacion: idPublicacion, accion: acc, nuevo_default: nuevoDefault };
+  }
+
   // Exponer el módulo
   window.GCFirestore = {
     generarId: generarId,
@@ -973,6 +1221,11 @@
     urlQrMesa: urlQrMesa,
     qrsImprimir: qrsImprimir,
     listarPublicaciones: listarPublicaciones,
+    listarPublicacionesEnriquecidas: listarPublicacionesEnriquecidas,
+    activarCartaEnCanal: activarCartaEnCanal,
+    renombrarCanal: renombrarCanal,
+    crearPublicacion: crearPublicacion,
+    despublicarPublicacion: despublicarPublicacion,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };

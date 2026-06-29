@@ -245,20 +245,36 @@ const AdminApp = (function() {
   // Identidad Firebase para el dueño (extra, NO bloqueante). Pide el custom token
   // al backend y hace signInWithCustomToken, dejando al navegador listo para escribir
   // Firestore. Si algo falla, se loguea un aviso y el admin sigue 100% normal.
-  async function iniciarSesionFirebase() {
-    try {
-      if (typeof firebase === 'undefined' || !firebase.auth) return;
-      const resp = await AdminAPI.obtenerTokenFirebase();
-      if (!resp || !resp.ok || !resp.firebase_token) {
-        console.warn('[Firebase] no se obtuvo token:', resp && resp.error);
-        return;
+  function iniciarSesionFirebase() {
+    // Guardamos la promesa para poder ESPERARLA antes de leer/escribir Firestore
+    // (el dashboard lee publicaciones de FS y arranca por setTimeout → carrera).
+    state._fsAuthPromise = (async function () {
+      try {
+        if (typeof firebase === 'undefined' || !firebase.auth) return false;
+        if (firebase.auth().currentUser) return true;
+        const resp = await AdminAPI.obtenerTokenFirebase();
+        if (!resp || !resp.ok || !resp.firebase_token) {
+          console.warn('[Firebase] no se obtuvo token:', resp && resp.error);
+          return false;
+        }
+        await firebase.auth().signInWithCustomToken(resp.firebase_token);
+        const u = firebase.auth().currentUser;
+        console.log('[Firebase] sesion iniciada:', u && u.uid);
+        return true;
+      } catch (e) {
+        console.warn('[Firebase] no se pudo iniciar sesion (el admin sigue normal):', e && e.message);
+        return false;
       }
-      await firebase.auth().signInWithCustomToken(resp.firebase_token);
-      const u = firebase.auth().currentUser;
-      console.log('[Firebase] sesion iniciada:', u && u.uid);
-    } catch (e) {
-      console.warn('[Firebase] no se pudo iniciar sesion (el admin sigue normal):', e && e.message);
-    }
+    })();
+    return state._fsAuthPromise;
+  }
+
+  // Espera a que la sesión Firebase esté lista (idempotente). Devuelve true/false.
+  // Si nadie la arrancó todavía, la arranca. No rompe el admin si falla.
+  async function asegurarSesionFirebase() {
+    if (firebase && firebase.auth && firebase.auth().currentUser) return true;
+    if (!state._fsAuthPromise) iniciarSesionFirebase();
+    try { return await state._fsAuthPromise; } catch (e) { return false; }
   }
 
   function volverALoginMail() {
@@ -382,6 +398,24 @@ const AdminApp = (function() {
         state.cartasCatalogoPorEmpresa[e.Id_Empresa] = bloque.publicaciones.cartas_catalogo || [];
       }
     });
+
+    // FS PURO (publicaciones): la fuente de verdad de publicaciones es Firestore.
+    // Esperamos a que la sesión FS esté lista y sobrescribimos lo que vino del
+    // dashboard GAS. Si FS fallara, queda el valor del dashboard como red.
+    try {
+      const fsOk = await asegurarSesionFirebase();
+      if (fsOk && window.GCFirestore && window.GCFirestore.listarPublicacionesEnriquecidas) {
+        for (const e of empresas) {
+          try {
+            const pf = await window.GCFirestore.listarPublicacionesEnriquecidas(e.Id_Empresa);
+            state.publicacionesPorEmpresa[e.Id_Empresa] = pf.por_local || {};
+            state.cartasCatalogoPorEmpresa[e.Id_Empresa] = pf.cartas_catalogo || [];
+          } catch (err) {
+            console.warn('[FS] publicaciones de', e.Id_Empresa, 'no se pudieron leer (queda el valor del dashboard):', err && err.message);
+          }
+        }
+      }
+    } catch (e) { /* el admin sigue con los valores del dashboard */ }
 
     AdminUI.setLoading(false);
 
@@ -861,6 +895,13 @@ const AdminApp = (function() {
   // La carta vieja vuelve automáticamente al catálogo "lista para
   // publicar". El canal NUNCA queda sin carta.
 
+  // Resuelve el Id_Empresa de un local desde la estructura cargada.
+  function _empresaDeLocal(idLocal) {
+    const locales = (state.estructura && state.estructura.locales) || [];
+    const l = locales.find(function (x) { return x.Id_Local === idLocal; });
+    return l ? l.Id_Empresa : null;
+  }
+
   function confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId) {
     const select = document.getElementById(selectId);
     if (!select) {
@@ -905,11 +946,14 @@ const AdminApp = (function() {
   async function ejecutarSwapPublicacion(idLocal, audienceSlug, idCartaNueva, nombreCartaNueva) {
     AdminUI.setLoading(true, 'Publicando carta…');
 
-    const resp = await AdminAPI.publicacionActivarCarta(idLocal, audienceSlug, idCartaNueva);
-
-    if (!resp.ok) {
+    const idEmpresa = _empresaDeLocal(idLocal);
+    let resp;
+    try {
+      await asegurarSesionFirebase();
+      resp = await window.GCFirestore.activarCartaEnCanal(idEmpresa, idLocal, audienceSlug, idCartaNueva);
+    } catch (e) {
       AdminUI.setLoading(false);
-      AdminUI.toast(resp.error || 'No pudimos publicar la carta', 'error');
+      AdminUI.toast(e && e.message ? e.message : 'No pudimos publicar la carta', 'error');
       return;
     }
 
@@ -1082,19 +1126,20 @@ const AdminApp = (function() {
     btn.disabled = true;
     btn.textContent = 'Publicando…';
 
-    const resp = await AdminAPI.publicacionActivarCarta(
-      canal.id_local,
-      canal.audience_slug,
-      ctx.idCarta
-    );
+    const idEmpresa = _empresaDeLocal(canal.id_local);
+    let resp;
+    try {
+      await asegurarSesionFirebase();
+      resp = await window.GCFirestore.activarCartaEnCanal(idEmpresa, canal.id_local, canal.audience_slug, ctx.idCarta);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '📤 Publicar →';
+      AdminUI.toast(e && e.message ? e.message : 'No pudimos publicar la carta', 'error');
+      return;
+    }
 
     btn.disabled = false;
     btn.textContent = '📤 Publicar →';
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos publicar la carta', 'error');
-      return;
-    }
 
     cerrarModalPublicar();
 
@@ -1111,17 +1156,15 @@ const AdminApp = (function() {
 
     // Recargar publicaciones por empresa en state (para que la próxima vez
     // que abra el modal vea el estado actualizado)
-    const empresa = ctx.idEmpresa || (state.editorContexto && state.editorContexto.carta && state.editorContexto.carta.Id_Empresa);
+    const empresa = _empresaDeLocal(canal.id_local) || ctx.idEmpresa
+      || (state.editorContexto && state.editorContexto.carta && state.editorContexto.carta.Id_Empresa);
     if (empresa) {
-      const respPubs = await AdminAPI.publicacionListar(empresa);
-      if (respPubs && respPubs.ok) {
-        const porLocal = {};
-        (respPubs.publicaciones || []).forEach(function(pub) {
-          if (!porLocal[pub.Id_Local]) porLocal[pub.Id_Local] = [];
-          porLocal[pub.Id_Local].push(pub);
-        });
-        state.publicacionesPorEmpresa[empresa] = porLocal;
-        state.cartasCatalogoPorEmpresa[empresa] = respPubs.cartas_catalogo || [];
+      try {
+        const pf = await window.GCFirestore.listarPublicacionesEnriquecidas(empresa);
+        state.publicacionesPorEmpresa[empresa] = pf.por_local || {};
+        state.cartasCatalogoPorEmpresa[empresa] = pf.cartas_catalogo || [];
+      } catch (e) {
+        console.warn('[FS] no se pudo refrescar publicaciones tras publicar:', e && e.message);
       }
     }
 
@@ -2285,14 +2328,17 @@ const AdminApp = (function() {
 
     const okBtn = document.getElementById('modal-sect-ok');
     okBtn.disabled = true;
-    const resp = await AdminAPI.publicacionRenombrarCanal(ctx.idPublicacion, nombre);
-    okBtn.disabled = false;
-
-    if (!resp.ok) {
-      status.textContent = resp.error || 'No pudimos renombrar el canal';
+    const idEmpresa = state.idEmpresaActiva;
+    try {
+      await asegurarSesionFirebase();
+      await window.GCFirestore.renombrarCanal(idEmpresa, ctx.idLocal, ctx.idPublicacion, nombre);
+    } catch (e) {
+      okBtn.disabled = false;
+      status.textContent = (e && e.message) ? e.message : 'No pudimos renombrar el canal';
       status.style.color = '#f87171';
       return;
     }
+    okBtn.disabled = false;
     cerrarModalSectores();
     // Actualizar el breadcrumb en vivo
     ctx.nombreCanal = nombre;
