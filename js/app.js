@@ -410,8 +410,16 @@ const AdminApp = (function() {
             const pf = await window.GCFirestore.listarPublicacionesEnriquecidas(e.Id_Empresa);
             state.publicacionesPorEmpresa[e.Id_Empresa] = pf.por_local || {};
             state.cartasCatalogoPorEmpresa[e.Id_Empresa] = pf.cartas_catalogo || [];
+            // FS-puro: parchear whatsapp/mensaje del local desde FS (no del dashboard GAS).
+            const wf = await window.GCFirestore.leerLocalesFsCampos(e.Id_Empresa);
+            ((state.estructura && state.estructura.locales) || []).forEach(function (l) {
+              if (l.Id_Empresa === e.Id_Empresa && wf[l.Id_Local]) {
+                l.WhatsApp = wf[l.Id_Local].whatsapp;
+                l.Mensaje_WhatsApp_Default = wf[l.Id_Local].mensaje_whatsapp_default;
+              }
+            });
           } catch (err) {
-            console.warn('[FS] publicaciones de', e.Id_Empresa, 'no se pudieron leer (queda el valor del dashboard):', err && err.message);
+            console.warn('[FS] publicaciones/locales de', e.Id_Empresa, 'no se pudieron leer (queda el valor del dashboard):', err && err.message);
           }
         }
       }
@@ -1236,18 +1244,29 @@ const AdminApp = (function() {
     btn.textContent = 'Guardando…';
     AdminUI.setLoginStatus('modal-ws-status', '');
 
-    const resp = await AdminAPI.localActualizar(idLocal, {
-      whatsapp: numero,
-      mensaje_whatsapp_default: mensaje
-    });
+    const idEmpresa = _empresaDeLocal(idLocal);
+    let normalizado = numero;
+    try {
+      await asegurarSesionFirebase();
+      const r = await window.GCFirestore.actualizarLocal(idEmpresa, idLocal, {
+        whatsapp: numero,
+        mensaje_whatsapp_default: mensaje
+      });
+      if (r && r.cambios && r.cambios.whatsapp !== undefined) normalizado = r.cambios.whatsapp;
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar';
+      AdminUI.setLoginStatus('modal-ws-status', (e && e.message) ? e.message : 'No pudimos guardar', 'error');
+      return;
+    }
 
     btn.disabled = false;
     btn.textContent = 'Guardar';
 
-    if (!resp.ok) {
-      AdminUI.setLoginStatus('modal-ws-status', resp.error || 'No pudimos guardar', 'error');
-      return;
-    }
+    // Patch en memoria (consistencia de sesión; la lectura full de estructura
+    // migra con el dashboard/login). El dashboard ya parchea estos campos de FS al cargar.
+    const locEstado = ((state.estructura && state.estructura.locales) || []).find(function (l) { return l.Id_Local === idLocal; });
+    if (locEstado) { locEstado.WhatsApp = normalizado; locEstado.Mensaje_WhatsApp_Default = mensaje; }
 
     AdminUI.toast('✓ WhatsApp configurado', 'success');
     cerrarModalWhatsApp();

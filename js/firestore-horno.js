@@ -1193,6 +1193,54 @@
     return { id_publicacion: idPublicacion, accion: acc, nuevo_default: nuevoDefault };
   }
 
+  // ===========================================================================
+  // LOCALES (config) — Firestore-primero. Editar campos del local + RE-HORNEAR
+  // (whatsapp/mensaje se hornean en menus_publicados; los usa el botón del comensal).
+  // ===========================================================================
+
+  // Réplica EXACTA de normalizarWhatsApp() del GAS (Script 07): deja el número
+  // listo para wa.me/<num> (formato 549...). Mismo resultado que la planilla.
+  function _normalizarWhatsApp(input) {
+    if (!input) return '';
+    let n = String(input).replace(/\D+/g, '');
+    if (!n) return '';
+    if (n.length > 12 && n.substring(0, 2) === '00') n = n.substring(2);
+    if (n.substring(0, 2) === '54' && n.length >= 12 && n.length <= 14) {
+      if (n.substring(2, 3) !== '9') n = '549' + n.substring(2);
+      return n;
+    }
+    if (n.charAt(0) === '0' && n.length >= 10 && n.length <= 12) { n = n.substring(1); return '549' + n; }
+    if (n.substring(0, 2) === '11' && n.length === 10) return '549' + n;
+    if (n.substring(0, 2) === '15' && n.length === 10) return '54911' + n.substring(2);
+    return n;
+  }
+
+  // Actualiza campos del local en FS y rehornea. Hoy admite lo que el front edita:
+  // whatsapp + mensaje_whatsapp_default (config del botón de WhatsApp del comensal).
+  async function actualizarLocal(idEmpresa, idLocal, campos) {
+    const updates = {};
+    if (campos.whatsapp !== undefined) updates.whatsapp = _normalizarWhatsApp(campos.whatsapp);
+    if (campos.mensaje_whatsapp_default !== undefined) {
+      updates.mensaje_whatsapp_default = String(campos.mensaje_whatsapp_default || '').trim();
+    }
+    if (Object.keys(updates).length === 0) throw new Error('Sin cambios para aplicar');
+    await db().collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal).update(updates);
+    await hornearLocal(idEmpresa, idLocal);
+    return { id_local: idLocal, cambios: updates };
+  }
+
+  // Campos FS-administrados del local, para que el dashboard los lea de FS (no de
+  // GAS): { idLocal: { whatsapp, mensaje_whatsapp_default } }.
+  async function leerLocalesFsCampos(idEmpresa) {
+    const snap = await db().collection('empresas').doc(idEmpresa).collection('locales').get();
+    const out = {};
+    snap.docs.forEach(function (d) {
+      const l = d.data();
+      out[d.id] = { whatsapp: l.whatsapp || '', mensaje_whatsapp_default: l.mensaje_whatsapp_default || '' };
+    });
+    return out;
+  }
+
   // Exponer el módulo
   window.GCFirestore = {
     generarId: generarId,
@@ -1226,6 +1274,8 @@
     renombrarCanal: renombrarCanal,
     crearPublicacion: crearPublicacion,
     despublicarPublicacion: despublicarPublicacion,
+    actualizarLocal: actualizarLocal,
+    leerLocalesFsCampos: leerLocalesFsCampos,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };
