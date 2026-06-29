@@ -560,11 +560,6 @@ const AdminApp = (function() {
     const direccion = l.Direccion || 'Sin dirección';
     const ciudad = l.Ciudad || '';
 
-    // Carta activa (puede ser null en local recién creado)
-    const cartaActiva = l.carta_activa || null;
-    const idCartaActiva = l.Id_Carta_Activa || null;
-    const urlPublica = l.url_publica || null;
-
     // ============================================================
     // BLOQUE NUEVO (modelo D): listar TODAS las publicaciones del local
     // Una publicación = una carta + audience_slug = una URL pública sirviendo.
@@ -804,88 +799,6 @@ const AdminApp = (function() {
   function volverADashboard() {
     state.cartasContexto = null;
     AdminUI.mostrarPantalla('screen-dashboard');
-  }
-
-
-  // ============================================================
-  // CAMBIO DE CARTA EN UN LOCAL (modal + ejecución)
-  // ============================================================
-
-  /**
-   * Abre el modal para confirmar el cambio de carta de un local.
-   * - idLocal: local que se modifica
-   * - nombreLocal: para mostrar en el modal
-   * - idCartaActualActual: ID actual (o null si el local no tenía)
-   * - nombreCartaActual: nombre de la carta actual (o null)
-   *
-   * La carta nueva se toma del <select> que está en la card del local.
-   */
-  function abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual) {
-    const select = document.getElementById('select-carta-' + idLocal);
-    if (!select) {
-      AdminUI.toast('No encontramos el selector', 'error');
-      return;
-    }
-    const idCartaNueva = select.value;
-    if (!idCartaNueva) {
-      AdminUI.toast('Elegí una carta primero', 'warn');
-      return;
-    }
-
-    // Encontrar el nombre legible de la carta nueva
-    const opt = select.options[select.selectedIndex];
-    const nombreCartaNueva = opt ? opt.text : idCartaNueva;
-
-    // Guardar contexto para el confirmar
-    state.cambioCartaContexto = {
-      idLocal: idLocal,
-      nombreLocal: nombreLocal,
-      idCartaActual: idCartaActual,
-      nombreCartaActual: nombreCartaActual || '(sin carta)',
-      idCartaNueva: idCartaNueva,
-      nombreCartaNueva: nombreCartaNueva
-    };
-
-    // Llenar el modal
-    document.getElementById('cambiar-carta-local-nombre').textContent = nombreLocal;
-    document.getElementById('cambiar-carta-actual').textContent = state.cambioCartaContexto.nombreCartaActual;
-    document.getElementById('cambiar-carta-nueva').textContent = nombreCartaNueva;
-
-    // Si es "asignación inicial" (sin carta previa), cambiar texto del botón
-    const btnConfirmar = document.getElementById('btn-confirmar-cambio');
-    if (!idCartaActual) {
-      btnConfirmar.textContent = 'Sí, asignar carta →';
-    } else {
-      btnConfirmar.textContent = 'Sí, cambiar ahora →';
-    }
-
-    document.getElementById('modal-cambiar-carta').classList.add('is-visible');
-  }
-
-  async function confirmarCambioCarta() {
-    const ctx = state.cambioCartaContexto;
-    if (!ctx) return;
-
-    const btn = document.getElementById('btn-confirmar-cambio');
-    btn.disabled = true;
-    btn.textContent = 'Cambiando…';
-
-    const resp = await AdminAPI.localCambiarCarta(ctx.idLocal, ctx.idCartaNueva);
-
-    btn.disabled = false;
-    btn.textContent = ctx.idCartaActual ? 'Sí, cambiar ahora →' : 'Sí, asignar carta →';
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cambiar la carta', 'error');
-      return;
-    }
-
-    cerrarModales();
-    state.cambioCartaContexto = null;
-    AdminUI.toast('Carta cambiada. Su comercio sigue en línea ✨', 'success');
-
-    // Recargar el dashboard para reflejar el cambio
-    await cargarDashboard();
   }
 
 
@@ -4387,8 +4300,6 @@ const AdminApp = (function() {
     abrirEmpresa,
     volverADashboard,
     abrirCartasDelLocal,
-    abrirModalCambioCarta,
-    confirmarCambioCarta,
     confirmarSwapPublicacion,
     ejecutarSwapPublicacion,
     abrirModalPublicarAhora,
@@ -4492,10 +4403,6 @@ function volverADashboard() { AdminApp.volverADashboard(); }
 function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
   AdminApp.abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa);
 }
-function abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual) {
-  AdminApp.abrirModalCambioCarta(idLocal, nombreLocal, idCartaActual, nombreCartaActual);
-}
-function confirmarCambioCarta() { AdminApp.confirmarCambioCarta(); }
 function confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId) {
   AdminApp.confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId);
 }
