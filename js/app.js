@@ -399,7 +399,7 @@ const AdminApp = (function() {
       }
     });
 
-    // FS PURO (publicaciones): la fuente de verdad de publicaciones es Firestore.
+    // FS PURO (publicaciones + empresa/local): la fuente de verdad es Firestore.
     // Esperamos a que la sesión FS esté lista y sobrescribimos lo que vino del
     // dashboard GAS. Si FS fallara, queda el valor del dashboard como red.
     try {
@@ -410,16 +410,24 @@ const AdminApp = (function() {
             const pf = await window.GCFirestore.listarPublicacionesEnriquecidas(e.Id_Empresa);
             state.publicacionesPorEmpresa[e.Id_Empresa] = pf.por_local || {};
             state.cartasCatalogoPorEmpresa[e.Id_Empresa] = pf.cartas_catalogo || [];
-            // FS-puro: parchear whatsapp/mensaje del local desde FS (no del dashboard GAS).
-            const wf = await window.GCFirestore.leerLocalesFsCampos(e.Id_Empresa);
+
+            // FS-puro (Etapa 2, paso 3): parchear empresa/local desde FS (no del
+            // dashboard GAS). Campo por campo, solo lo que FS trae definido → no
+            // se pisa mesas_creadas ni nada que siga viniendo de GAS. Si FS no
+            // tiene un campo, queda el valor del dashboard.
+            const ef = await window.GCFirestore.leerEmpresaYLocalesFs(e.Id_Empresa);
+            if (ef.empresa) {
+              const empDest = ((state.estructura && state.estructura.empresas) || [])
+                .find(function (x) { return x.Id_Empresa === e.Id_Empresa; });
+              if (empDest) _parcharDefinidos(empDest, ef.empresa);
+            }
             ((state.estructura && state.estructura.locales) || []).forEach(function (l) {
-              if (l.Id_Empresa === e.Id_Empresa && wf[l.Id_Local]) {
-                l.WhatsApp = wf[l.Id_Local].whatsapp;
-                l.Mensaje_WhatsApp_Default = wf[l.Id_Local].mensaje_whatsapp_default;
+              if (l.Id_Empresa === e.Id_Empresa && ef.locales[l.Id_Local]) {
+                _parcharDefinidos(l, ef.locales[l.Id_Local]);
               }
             });
           } catch (err) {
-            console.warn('[FS] publicaciones/locales de', e.Id_Empresa, 'no se pudieron leer (queda el valor del dashboard):', err && err.message);
+            console.warn('[FS] empresa/local/publicaciones de', e.Id_Empresa, 'no se pudieron leer (queda el valor del dashboard):', err && err.message);
           }
         }
       }
@@ -438,6 +446,15 @@ const AdminApp = (function() {
     }
 
     renderDashboard();
+  }
+
+  // Copia en `destino` solo las claves de `fuente` cuyo valor NO sea undefined.
+  // Sirve para parchear un objeto que vino de GAS con lo que trae Firestore, sin
+  // borrar campos que FS no tenga (esos quedan con el valor de GAS).
+  function _parcharDefinidos(destino, fuente) {
+    Object.keys(fuente).forEach(function (k) {
+      if (fuente[k] !== undefined) destino[k] = fuente[k];
+    });
   }
 
   function cerrarSesionForzado() {
