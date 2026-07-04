@@ -221,6 +221,28 @@
     };
   }
 
+  // Metadata de la carta (SIN secciones/productos), para el modal "editar carta".
+  // Reemplaza el read GAS cartaObtenerCompleta. Mapea el doc FS (snake_case) a los
+  // nombres que usa el modal (PascalCase). Etapa 2, frente B.
+  async function leerCartaMetadata(idEmpresa, idCarta) {
+    const snap = await db().collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta).get();
+    if (!snap.exists) throw new Error('Carta no encontrada en Firestore: ' + idCarta);
+    const c = snap.data();
+    return {
+      Id_Carta: idCarta,
+      Nombre: c.nombre || '',
+      Descripcion: c.descripcion || '',
+      Redondeo: (c.redondeo === undefined || c.redondeo === null) ? '10' : c.redondeo,
+      Pie_Direccion: c.pie_direccion || '',
+      Pie_Telefono: c.pie_telefono || '',
+      Pie_Mail: c.pie_mail || '',
+      Notas: c.notas || '',
+      Template: c.template || 'minimalista',
+      Estado: c.estado || 'activa'
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // CARTAS (nivel carta) — operan sobre empresas/{emp}/cartas/{carta}
   // ---------------------------------------------------------------------------
@@ -1357,6 +1379,7 @@
     crearProducto: crearProducto,
     eliminarProducto: eliminarProducto,
     leerCartaCompleta: leerCartaCompleta,
+    leerCartaMetadata: leerCartaMetadata,
     listarCartas: listarCartas,
     actualizarCarta: actualizarCarta,
     crearCarta: crearCarta,

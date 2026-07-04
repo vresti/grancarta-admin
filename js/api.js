@@ -94,15 +94,11 @@ const AdminAPI = (function() {
       return llamar('local_crear', datos);
     },
 
-    // ---- Cartas / Secciones / Productos: MIGRADO a Firestore (Etapa 1, GCFirestore) ----
+    // ---- Cartas / Secciones / Productos: MIGRADO a Firestore (Etapa 1+2, GCFirestore) ----
     //      El editor (crear/editar/borrar/ordenar/toggle de cartas, secciones y productos)
-    //      vive 100% en firestore-horno.js. Se retiraron los wrappers GAS sin caller
-    //      (carta_listar/crear/actualizar/duplicar/activar/archivar, seccion_*, producto_*)
-    //      + cuenta_obtenerEstructura (Etapa 2, 4/7). Los handlers GAS quedan por ahora.
-    //      ÚNICO vivo acá: cartaObtenerCompleta (modal editar carta; pendiente frente B → FS).
-    cartaObtenerCompleta(idCarta) {
-      return llamar('carta_obtener_completa', { id_carta: idCarta });
-    },
+    //      Y la metadata del modal "editar carta" (leerCartaMetadata, frente B, 4/7) viven
+    //      100% en firestore-horno.js. Se retiraron TODOS los wrappers GAS sin caller
+    //      (carta_*, seccion_*, producto_*, cuenta_obtenerEstructura). Los handlers GAS quedan.
 
     // ---- Colaboradores / Equipo (Bloque A — Nivel 2, 12/6/2026) ----
     /**

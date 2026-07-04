@@ -2536,16 +2536,21 @@ const AdminApp = (function() {
 
   async function abrirModalEditarCarta(idCarta) {
     AdminUI.setLoading(true);
-    const resp = await AdminAPI.cartaObtenerCompleta(idCarta);
-    AdminUI.setLoading(false);
-
-    if (!resp.ok) {
-      AdminUI.toast(resp.error || 'No pudimos cargar la carta', 'error');
+    // FS (Etapa 2, frente B): la metadata de la carta se lee de Firestore (antes GAS
+    // cartaObtenerCompleta → planilla, que quedaba viejo porque el guardado ya es FS).
+    let c;
+    try {
+      const idEmpresa = state.cartasContexto.idEmpresa;
+      c = await window.GCFirestore.leerCartaMetadata(idEmpresa, idCarta);
+    } catch (e) {
+      AdminUI.setLoading(false);
+      console.error('[FS] no se pudo leer la metadata de la carta:', e && e.message);
+      AdminUI.toast('No pudimos cargar la carta', 'error');
       return;
     }
+    AdminUI.setLoading(false);
 
     state.cartaEditarId = idCarta;
-    const c = resp.carta;
 
     document.getElementById('carta-edit-nombre').value = c.Nombre || '';
     document.getElementById('carta-edit-descripcion').value = c.Descripcion || '';
