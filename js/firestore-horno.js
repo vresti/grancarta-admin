@@ -1241,6 +1241,71 @@
     return out;
   }
 
+  // Arma el dashboard COMPLETO desde Firestore, scopeado a la empresa activa
+  // (la del token). Devuelve el mismo shape que hoy arma el front desde GAS, para
+  // reemplazar dashboard_completo (la lectura viva de la planilla). Etapa 2.
+  // Solo lectura; todas las rutas caen bajo un empId conocido + el doc propio
+  // usuarios/{uid} → permitido por las reglas v1.5, sin tocar seguridad.
+  //   Devuelve: { empresa, locales:[...], publicaciones:{por_local,cartas_catalogo}, es_admin }
+  async function armarDashboardFS(idEmpresa) {
+    const D = db();
+
+    // 1) Empresa
+    const empSnap = await D.collection('empresas').doc(idEmpresa).get();
+    if (!empSnap.exists) throw new Error('empresa ' + idEmpresa + ' no está en Firestore');
+    const e = empSnap.data();
+    const empresa = {
+      Id_Empresa: idEmpresa,
+      Razon_Social: e.razon_social || '',
+      Nombre_Comercial: e.nombre_comercial || '',
+      CUIT: e.cuit || '',
+      Pais: e.pais || '',
+      Logo_Url: e.logo_url || '',
+      Mail_Contacto: e.mail_contacto || '',
+      Estado: e.estado || 'activa'
+    };
+
+    // 2) Locales (no archivados), mismo shape que el dashboard GAS
+    const locSnap = await D.collection('empresas').doc(idEmpresa).collection('locales').get();
+    const locales = locSnap.docs
+      .map(function (d) {
+        const l = d.data();
+        return {
+          Id_Local: d.id,
+          Id_Empresa: idEmpresa,
+          Nombre: l.nombre || '',
+          Direccion: l.direccion || '',
+          Ciudad: l.ciudad || '',
+          Capacidad_Mesas: l.capacidad_mesas || 0,
+          Id_Carta_Activa: l.id_carta_activa || null,
+          Modo_Carta: l.modo_carta || 'completa',
+          Estado: l.estado || 'activo',
+          Slug: l.slug || null,
+          WhatsApp: l.whatsapp || '',
+          Mensaje_WhatsApp_Default: l.mensaje_whatsapp_default || ''
+        };
+      })
+      .filter(function (l) { return l.Estado !== 'archivado'; });
+
+    // 3) Publicaciones (reusa el lector FS existente)
+    const publicaciones = await listarPublicacionesEnriquecidas(idEmpresa);
+
+    // 4) es_admin desde el propio doc usuarios/{uid}
+    let esAdmin = false;
+    try {
+      const user = firebase.auth().currentUser;
+      if (user && user.uid) {
+        const miSnap = await D.collection('usuarios').doc(user.uid).get();
+        const roles = (miSnap.exists && Array.isArray(miSnap.data().roles)) ? miSnap.data().roles : [];
+        esAdmin = roles.some(function (r) { return String(r.tipo || '').toLowerCase().trim() === 'admin'; });
+      }
+    } catch (err) {
+      console.warn('[FS] no se pudo derivar es_admin de FS:', err && err.message);
+    }
+
+    return { empresa: empresa, locales: locales, publicaciones: publicaciones, es_admin: esAdmin };
+  }
+
   // Lee de FS el doc de la empresa + TODOS sus locales, con los campos que el
   // dashboard del admin necesita, mapeados a los nombres del dashboard
   // (PascalCase). El front usa esto para leer empresa/local de Firestore en vez
@@ -1320,6 +1385,7 @@
     actualizarLocal: actualizarLocal,
     leerLocalesFsCampos: leerLocalesFsCampos,
     leerEmpresaYLocalesFs: leerEmpresaYLocalesFs,
+    armarDashboardFS: armarDashboardFS,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta
   };

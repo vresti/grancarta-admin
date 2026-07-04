@@ -349,9 +349,44 @@ const AdminApp = (function() {
     AdminUI.setLoading(true);
     AdminUI.mostrarPantalla('screen-dashboard');
 
+    // ════════════════════════════════════════════════════════════════════
+    // FS-PRIMERO (Etapa 2): si hay empresa activa en el token y sesión FS OK,
+    // armo el dashboard ENTERO desde Firestore y salgo. dashboard_completo
+    // (GAS, más abajo) queda de RED: si esto falla o no hay scope de token,
+    // corre el camino GAS de siempre, INTACTO.
+    // ════════════════════════════════════════════════════════════════════
+    state.idEmpresaActiva = _idEmpresaDelToken();
+    if (state.idEmpresaActiva) {
+      try {
+        const fsOk = await asegurarSesionFirebase();
+        if (fsOk && window.GCFirestore && window.GCFirestore.armarDashboardFS) {
+          const d = await window.GCFirestore.armarDashboardFS(state.idEmpresaActiva);
+
+          state.estructura = { empresas: [d.empresa], locales: d.locales };
+          state.esAdmin = !!d.es_admin;
+          state.cartasPorEmpresa = {};   // vacío a propósito: el render cae a estructura.locales (FS)
+          state.publicacionesPorEmpresa = {};
+          state.cartasCatalogoPorEmpresa = {};
+          state.publicacionesPorEmpresa[d.empresa.Id_Empresa] = d.publicaciones.por_local || {};
+          state.cartasCatalogoPorEmpresa[d.empresa.Id_Empresa] = d.publicaciones.cartas_catalogo || [];
+
+          const btnSis = document.getElementById('btn-panel-sistema');
+          if (btnSis) btnSis.style.display = state.esAdmin ? 'inline-flex' : 'none';
+
+          AdminUI.setLoading(false);
+          renderDashboard();
+          console.log('[FS] dashboard armado desde Firestore (empresa ' + state.idEmpresaActiva + ').');
+          return;
+        }
+      } catch (err) {
+        console.warn('[FS] no se pudo armar el dashboard desde Firestore; caigo a GAS:', err && err.message);
+      }
+    }
+
     // PERFORMANCE/PARETO (13/6): UNA sola llamada trae todo el dashboard
     // (estructura + cartas + publicaciones por empresa + es_admin).
     // Antes eran 6-8 llamadas a GAS (~12s). Ahora 1 (~3-4s).
+    // ↑ CAMINO GAS (RED): corre solo si el FS-primero de arriba no armó.
     const resp = await AdminAPI.dashboardCompleto();
 
     if (!resp.ok) {
