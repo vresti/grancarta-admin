@@ -4203,20 +4203,9 @@ const AdminApp = (function() {
   // ============================================================
   // PANEL DE SISTEMA (Nivel 0 — Admin)
   // ============================================================
-
-  async function detectarAdminSistema() {
-    try {
-      const resp = await AdminAPI.obtenerMiSesion();
-      const roles = (resp.ok && resp.usuario && resp.usuario.roles) ? resp.usuario.roles : [];
-      state.esAdmin = roles.some(function(r) {
-        return String(r.tipo || '').toLowerCase().trim() === 'admin';
-      });
-    } catch (e) {
-      state.esAdmin = false;
-    }
-    const btn = document.getElementById('btn-panel-sistema');
-    if (btn) btn.style.display = state.esAdmin ? 'inline-flex' : 'none';
-  }
+  // Nota: `state.esAdmin` se resuelve al cargar el dashboard (armarDashboardFS
+  // lee usuarios/{uid}.roles de FS; GAS de red). Se retiró detectarAdminSistema
+  // (función muerta, sin caller, que además pegaba a GAS obtenerMiSesion). 4/7.
 
   async function abrirPanelSistema() {
     if (!state.esAdmin) { AdminUI.toast('Solo para administradores del sistema', 'error'); return; }
