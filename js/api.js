@@ -84,37 +84,19 @@ const AdminAPI = (function() {
     },
 
     // ---- Empresas ----
+    // Se retiraron los wrappers muertos empresaListar/empresaObtener/empresaActualizar
+    // (Etapa 2, paso 4, 4/7): ningún caller en el admin. La LECTURA de empresa la sirve
+    // Firestore (dashboard override, paso 3). Los handlers GAS quedan por ahora.
     empresaCrear(datos) {
       return llamar('empresa_crear', datos);
     },
 
-    empresaListar() {
-      return llamar('empresa_listar', {});
-    },
-
-    empresaObtener(idEmpresa) {
-      return llamar('empresa_obtener', { id_empresa: idEmpresa });
-    },
-
-    empresaActualizar(idEmpresa, cambios) {
-      return llamar('empresa_actualizar', {
-        id_empresa: idEmpresa,
-        ...cambios
-      });
-    },
-
     // ---- Locales ----
+    // Se retiraron los wrappers muertos localListar/localObtener (paso 4): sin caller en
+    // el admin. OJO: el handler GAS `local_listar` SIGUE VIVO — lo usa grancarta-caja
+    // (su propio api.js). Acá solo se saca el wrapper del admin.
     localCrear(datos) {
       return llamar('local_crear', datos);
-    },
-
-    localListar(idEmpresa = null) {
-      const params = idEmpresa ? { id_empresa: idEmpresa } : {};
-      return llamar('local_listar', params);
-    },
-
-    localObtener(idLocal) {
-      return llamar('local_obtener', { id_local: idLocal });
     },
 
     // ---- Cartas (Editor de Carta) ----
