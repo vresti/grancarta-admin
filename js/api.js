@@ -78,11 +78,6 @@ const AdminAPI = (function() {
       return llamar('auth_obtenerMiSesion', {});
     },
 
-    // ---- Cuenta ----
-    obtenerEstructura() {
-      return llamar('cuenta_obtenerEstructura', {});
-    },
-
     // ---- Empresas ----
     // Se retiraron los wrappers muertos empresaListar/empresaObtener/empresaActualizar
     // (Etapa 2, paso 4, 4/7): ningún caller en el admin. La LECTURA de empresa la sirve
@@ -99,105 +94,14 @@ const AdminAPI = (function() {
       return llamar('local_crear', datos);
     },
 
-    // ---- Cartas (Editor de Carta) ----
-    cartaListar(idEmpresa, incluirArchivadas = false) {
-      return llamar('carta_listar', {
-        id_empresa: idEmpresa,
-        incluir_archivadas: incluirArchivadas
-      });
-    },
-
-    cartaCrear(datos) {
-      return llamar('carta_crear', datos);
-    },
-
+    // ---- Cartas / Secciones / Productos: MIGRADO a Firestore (Etapa 1, GCFirestore) ----
+    //      El editor (crear/editar/borrar/ordenar/toggle de cartas, secciones y productos)
+    //      vive 100% en firestore-horno.js. Se retiraron los wrappers GAS sin caller
+    //      (carta_listar/crear/actualizar/duplicar/activar/archivar, seccion_*, producto_*)
+    //      + cuenta_obtenerEstructura (Etapa 2, 4/7). Los handlers GAS quedan por ahora.
+    //      ÚNICO vivo acá: cartaObtenerCompleta (modal editar carta; pendiente frente B → FS).
     cartaObtenerCompleta(idCarta) {
       return llamar('carta_obtener_completa', { id_carta: idCarta });
-    },
-
-    cartaActualizar(idCarta, cambios) {
-      return llamar('carta_actualizar', {
-        id_carta: idCarta,
-        ...cambios
-      });
-    },
-
-    cartaDuplicar(idCartaOrigen, nombreNueva, modificadorPorcentaje = 0) {
-      return llamar('carta_duplicar', {
-        id_carta_origen: idCartaOrigen,
-        nombre_nueva: nombreNueva,
-        modificador_porcentaje: modificadorPorcentaje
-      });
-    },
-
-    cartaActivar(idCarta) {
-      return llamar('carta_activar', { id_carta: idCarta });
-    },
-
-    cartaArchivar(idCarta) {
-      return llamar('carta_archivar', { id_carta: idCarta });
-    },
-
-    // ---- Secciones ----
-    seccionCrear(datos) {
-      return llamar('seccion_crear', datos);
-    },
-
-    seccionListar(idCarta) {
-      return llamar('seccion_listar', { id_carta: idCarta });
-    },
-
-    seccionActualizar(idSeccion, cambios) {
-      return llamar('seccion_actualizar', {
-        id_seccion: idSeccion,
-        ...cambios
-      });
-    },
-
-    seccionOrdenar(idSeccion, direccion) {
-      return llamar('seccion_ordenar', {
-        id_seccion: idSeccion,
-        direccion: direccion
-      });
-    },
-
-    seccionEliminar(idSeccion, forzar = false) {
-      return llamar('seccion_eliminar', {
-        id_seccion: idSeccion,
-        forzar: forzar
-      });
-    },
-
-    // ---- Productos ----
-    productoCrear(datos) {
-      return llamar('producto_crear', datos);
-    },
-
-    productoActualizar(idProducto, cambios) {
-      return llamar('producto_actualizar', {
-        id_producto: idProducto,
-        ...cambios
-      });
-    },
-
-    productoOrdenar(idProducto, direccion) {
-      return llamar('producto_ordenar', {
-        id_producto: idProducto,
-        direccion: direccion
-      });
-    },
-
-    productoToggleDisponible(idProducto, estado) {
-      // El backend (script 09) espera 'estado' con 3 valores: 'visible'|'agotado'|'oculto'.
-      // (Antes mandaba 'disponible', que el back interpretaba como booleano → siempre oculto.)
-      return llamar('producto_toggle_disponible', {
-        id_producto: idProducto,
-        estado: estado
-      });
-    },
-
-    productoEliminar(idProducto) {
-      return llamar('producto_eliminar', { id_producto: idProducto });
     },
 
     // ---- Colaboradores / Equipo (Bloque A — Nivel 2, 12/6/2026) ----
