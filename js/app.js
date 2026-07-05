@@ -3964,7 +3964,15 @@ const AdminApp = (function() {
   }
 
   async function cargarEquipo() {
-    const resp = await AdminAPI.colaboradorListar(equipoState.idEmpresa);
+    // Colaboradores→FS (v1.6): leemos "Equipo" de Firestore; si algo falla,
+    // caemos a GAS (colaborador_listar) para no romper la pantalla.
+    let resp;
+    try {
+      resp = await window.GCFirestore.colaboradorListar(equipoState.idEmpresa);
+    } catch (e) {
+      console.warn('[FS] colaboradorListar falló, fallback a GAS:', e && e.message);
+      resp = await AdminAPI.colaboradorListar(equipoState.idEmpresa);
+    }
     if (!resp.ok) {
       AdminUI.toast(resp.error || 'No pudimos cargar el equipo', 'error');
       document.getElementById('equipo-list').innerHTML = '';

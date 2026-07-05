@@ -1371,8 +1371,68 @@
     return { empresa: empresa, locales: locales };
   }
 
+  // Colaboradores de una empresa (pantalla "Equipo"), 100% Firestore (v1.6).
+  // Reemplaza el read GAS colaborador_listar. Devuelve el MISMO shape que GAS:
+  //   { ok, colaboradores: [{ id_usuario, mail, nombre, apellido, tiene_dni,
+  //     es_dueno, rol_visible, locales_habilitados[] }], locales_empresa: [{ id_local, nombre }] }
+  // Query: usuarios where cuentas_relacionadas array-contains <cuenta de la empresa>
+  // (la regla v1.6 exige que esa cuenta sea la del que consulta). Si algo falla,
+  // lanza → el caller cae a GAS (fallback).
+  async function colaboradorListar(idEmpresa) {
+    const empRef = db().collection('empresas').doc(idEmpresa);
+    const empSnap = await empRef.get();
+    if (!empSnap.exists) throw new Error('empresa no encontrada en FS: ' + idEmpresa);
+    const idCuenta = empSnap.data().id_cuenta;
+    if (!idCuenta) throw new Error('empresa sin id_cuenta en FS: ' + idEmpresa);
+
+    // Locales ACTIVOS de la empresa (para locales_empresa[] y para acotar gerentes).
+    const locSnap = await empRef.collection('locales').get();
+    const localesEmpresa = [];
+    const idLocalesEmpresa = {};
+    locSnap.docs.forEach(function (d) {
+      const l = d.data();
+      if (l.estado === 'activo') {
+        localesEmpresa.push({ id_local: d.id, nombre: l.nombre || '' });
+        idLocalesEmpresa[d.id] = true;
+      }
+    });
+
+    // Usuarios relacionados a la cuenta de esta empresa (dueños + gerentes).
+    const usSnap = await db().collection('usuarios')
+      .where('cuentas_relacionadas', 'array-contains', idCuenta).get();
+
+    const colaboradores = [];
+    usSnap.docs.forEach(function (d) {
+      const u = d.data();
+      const roles = u.roles || [];
+      // Dueño/secretaría de ESTA cuenta: rol dueño, misma cuenta, sin local.
+      const esDueno = roles.some(function (r) {
+        return (r.tipo === 'dueño' || r.tipo === 'duenio') && r.id_cuenta === idCuenta && !r.id_local;
+      });
+      // Locales de ESTA empresa donde el usuario es encargado.
+      const localesHab = (u.locales_gerente || []).filter(function (idLoc) {
+        return idLocalesEmpresa[idLoc];
+      });
+      // Incluir solo si es dueño de la cuenta O gerente de un local de la empresa.
+      if (!esDueno && localesHab.length === 0) return;
+      colaboradores.push({
+        id_usuario: d.id,
+        mail: u.mail || '',
+        nombre: u.nombre || '',
+        apellido: u.apellido || '',
+        tiene_dni: false,                       // no existe columna DNI (igual que GAS hoy)
+        es_dueno: esDueno,
+        rol_visible: esDueno ? 'Dueño / Secretaría' : 'Gerente',
+        locales_habilitados: localesHab         // SIEMPRE array (la UI llama .indexOf/.length)
+      });
+    });
+
+    return { ok: true, colaboradores: colaboradores, locales_empresa: localesEmpresa };
+  }
+
   // Exponer el módulo
   window.GCFirestore = {
+    colaboradorListar: colaboradorListar,
     generarId: generarId,
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,
