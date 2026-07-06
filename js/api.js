@@ -102,12 +102,10 @@ const AdminAPI = (function() {
 
     // ---- Colaboradores / Equipo (Bloque A — Nivel 2, 12/6/2026) ----
     /**
-     * Lista el equipo de una empresa: secretarias (dueño) + gerentes
-     * (encargado) con sus locales habilitados, y los locales de la empresa.
+     * (6/7) colaboradorListar → RETIRADO: "Equipo" lee SOLO de Firestore
+     * (GCFirestore.colaboradorListar). El handler GAS colaborador_listar quedó
+     * fuera del dispatcher. Ver bitácora 047.
      */
-    colaboradorListar(idEmpresa) {
-      return llamar('colaborador_listar', { id_empresa: idEmpresa });
-    },
 
     /**
      * Da de alta una secretaría/dueño (acceso pleno a la cuenta).
