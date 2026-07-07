@@ -350,146 +350,49 @@ const AdminApp = (function() {
     AdminUI.mostrarPantalla('screen-dashboard');
 
     // ════════════════════════════════════════════════════════════════════
-    // FS-PRIMERO (Etapa 2): si hay empresa activa en el token y sesión FS OK,
-    // armo el dashboard ENTERO desde Firestore y salgo. dashboard_completo
-    // (GAS, más abajo) queda de RED: si esto falla o no hay scope de token,
-    // corre el camino GAS de siempre, INTACTO.
+    // FS-ONLY (Etapa 2, 7/7): el dashboard del admin se arma 100% desde
+    // Firestore (armarDashboardFS). El fallback GAS (dashboard_completo) se
+    // retiró tras el soak (bitácora 049): ningún camino vivo lo llamaba.
+    // Acá SIEMPRE hay empresa en el token — quien no eligió empresa queda en
+    // el selector de app.grancarta.com y no llega hasta este punto.
     // ════════════════════════════════════════════════════════════════════
     state.idEmpresaActiva = _idEmpresaDelToken();
-    if (state.idEmpresaActiva) {
-      try {
-        const fsOk = await asegurarSesionFirebase();
-        if (fsOk && window.GCFirestore && window.GCFirestore.armarDashboardFS) {
-          const d = await window.GCFirestore.armarDashboardFS(state.idEmpresaActiva);
-
-          state.estructura = { empresas: [d.empresa], locales: d.locales };
-          state.esAdmin = !!d.es_admin;
-          state.cartasPorEmpresa = {};   // vacío a propósito: el render cae a estructura.locales (FS)
-          state.publicacionesPorEmpresa = {};
-          state.cartasCatalogoPorEmpresa = {};
-          state.publicacionesPorEmpresa[d.empresa.Id_Empresa] = d.publicaciones.por_local || {};
-          state.cartasCatalogoPorEmpresa[d.empresa.Id_Empresa] = d.publicaciones.cartas_catalogo || [];
-
-          const btnSis = document.getElementById('btn-panel-sistema');
-          if (btnSis) btnSis.style.display = state.esAdmin ? 'inline-flex' : 'none';
-
-          AdminUI.setLoading(false);
-          renderDashboard();
-          console.log('[FS] dashboard armado desde Firestore (empresa ' + state.idEmpresaActiva + ').');
-          return;
-        }
-      } catch (err) {
-        console.warn('[FS] no se pudo armar el dashboard desde Firestore; caigo a GAS:', err && err.message);
-      }
-    }
-
-    // PERFORMANCE/PARETO (13/6): UNA sola llamada trae todo el dashboard
-    // (estructura + cartas + publicaciones por empresa + es_admin).
-    // Antes eran 6-8 llamadas a GAS (~12s). Ahora 1 (~3-4s).
-    // ↑ CAMINO GAS (RED): corre solo si el FS-primero de arriba no armó.
-    const resp = await AdminAPI.dashboardCompleto();
-
-    if (!resp.ok) {
+    if (!state.idEmpresaActiva) {
+      // Estado anómalo (app.grancarta.com garantiza la empresa en el token):
+      // volvemos a app a re-elegir ámbito en vez de quedar sin datos.
       AdminUI.setLoading(false);
-      if (resp.error && (resp.error.includes('Sesión') || resp.error.includes('Token'))) {
-        cerrarSesionForzado();
-        return;
-      }
-      AdminUI.toast(resp.error || 'No pudimos cargar los datos', 'error');
+      cerrarSesionForzado();
       return;
     }
 
-    // La estructura viene anidada en resp.estructura
-    const estructura = resp.estructura || {};
-    state.estructura = estructura;
-
-    // SCOPE A UNA EMPRESA (14/6): el admin trabaja sobre LA empresa que se
-    // eligió en app.grancarta.com. Ese id viaja dentro del token contextual
-    // (id_empresa_activa). Lo leemos para mostrar solo esa empresa, no las 5.
-    state.idEmpresaActiva = _idEmpresaDelToken();
-
-    // es_admin viene en la misma respuesta → mostramos el botón sin otra llamada
-    state.esAdmin = !!resp.es_admin;
-    const btnSis = document.getElementById('btn-panel-sistema');
-    if (btnSis) btnSis.style.display = state.esAdmin ? 'inline-flex' : 'none';
-
-    // Cartas y publicaciones ya vienen por empresa en resp.por_empresa
-    const empresas = estructura.empresas || [];
-    state.cartasPorEmpresa = {};
-    state.publicacionesPorEmpresa = {};
-    state.cartasCatalogoPorEmpresa = {};
-
-    const porEmpresa = resp.por_empresa || {};
-    empresas.forEach(function(e) {
-      const bloque = porEmpresa[e.Id_Empresa] || {};
-      if (bloque.cartas) {
-        state.cartasPorEmpresa[e.Id_Empresa] = {
-          locales: bloque.cartas.locales || [],
-          cartas_disponibles: bloque.cartas.cartas_disponibles || []
-        };
-      }
-      if (bloque.publicaciones) {
-        state.publicacionesPorEmpresa[e.Id_Empresa] = bloque.publicaciones.por_local || {};
-        state.cartasCatalogoPorEmpresa[e.Id_Empresa] = bloque.publicaciones.cartas_catalogo || [];
-      }
-    });
-
-    // FS PURO (publicaciones + empresa/local): la fuente de verdad es Firestore.
-    // Esperamos a que la sesión FS esté lista y sobrescribimos lo que vino del
-    // dashboard GAS. Si FS fallara, queda el valor del dashboard como red.
     try {
       const fsOk = await asegurarSesionFirebase();
-      if (fsOk && window.GCFirestore && window.GCFirestore.listarPublicacionesEnriquecidas) {
-        for (const e of empresas) {
-          try {
-            const pf = await window.GCFirestore.listarPublicacionesEnriquecidas(e.Id_Empresa);
-            state.publicacionesPorEmpresa[e.Id_Empresa] = pf.por_local || {};
-            state.cartasCatalogoPorEmpresa[e.Id_Empresa] = pf.cartas_catalogo || [];
-
-            // FS-puro (Etapa 2, paso 3): parchear empresa/local desde FS (no del
-            // dashboard GAS). Campo por campo, solo lo que FS trae definido → no
-            // se pisa mesas_creadas ni nada que siga viniendo de GAS. Si FS no
-            // tiene un campo, queda el valor del dashboard.
-            const ef = await window.GCFirestore.leerEmpresaYLocalesFs(e.Id_Empresa);
-            if (ef.empresa) {
-              const empDest = ((state.estructura && state.estructura.empresas) || [])
-                .find(function (x) { return x.Id_Empresa === e.Id_Empresa; });
-              if (empDest) _parcharDefinidos(empDest, ef.empresa);
-            }
-            ((state.estructura && state.estructura.locales) || []).forEach(function (l) {
-              if (l.Id_Empresa === e.Id_Empresa && ef.locales[l.Id_Local]) {
-                _parcharDefinidos(l, ef.locales[l.Id_Local]);
-              }
-            });
-          } catch (err) {
-            console.warn('[FS] empresa/local/publicaciones de', e.Id_Empresa, 'no se pudieron leer (queda el valor del dashboard):', err && err.message);
-          }
-        }
+      if (!fsOk || !window.GCFirestore || !window.GCFirestore.armarDashboardFS) {
+        throw new Error('sesión Firestore no disponible');
       }
-    } catch (e) { /* el admin sigue con los valores del dashboard */ }
+      const d = await window.GCFirestore.armarDashboardFS(state.idEmpresaActiva);
 
-    AdminUI.setLoading(false);
+      state.estructura = { empresas: [d.empresa], locales: d.locales };
+      state.esAdmin = !!d.es_admin;
+      state.cartasPorEmpresa = {};   // vacío a propósito: el render cae a estructura.locales (FS)
+      state.publicacionesPorEmpresa = {};
+      state.cartasCatalogoPorEmpresa = {};
+      state.publicacionesPorEmpresa[d.empresa.Id_Empresa] = d.publicaciones.por_local || {};
+      state.cartasCatalogoPorEmpresa[d.empresa.Id_Empresa] = d.publicaciones.cartas_catalogo || [];
 
-    // Si el usuario no tiene empresas todavía → pantalla de bienvenida
-    if (empresas.length === 0) {
-      const nombreUsuario = state.nombreNuevo
-        || (state.usuarioLogueado && state.usuarioLogueado.nombre)
-        || 'amigo';
-      document.getElementById('bienvenida-nombre').textContent = nombreUsuario;
-      AdminUI.mostrarPantalla('screen-bienvenida');
-      return;
+      const btnSis = document.getElementById('btn-panel-sistema');
+      if (btnSis) btnSis.style.display = state.esAdmin ? 'inline-flex' : 'none';
+
+      AdminUI.setLoading(false);
+      renderDashboard();
+      console.log('[FS] dashboard armado desde Firestore (empresa ' + state.idEmpresaActiva + ').');
+    } catch (err) {
+      // El fallback GAS se retiró (bitácora 049): sin red a GAS. Mostramos un
+      // error propio y dejamos reintentar. (En todo el soak FS nunca falló.)
+      AdminUI.setLoading(false);
+      console.error('[FS] no se pudo armar el dashboard desde Firestore:', err && err.message);
+      AdminUI.toast('No pudimos cargar el panel. Reintentá en unos segundos.', 'error');
     }
-
-    renderDashboard();
-  }
-
-  // Copia en `destino` solo las claves de `fuente` cuyo valor NO sea undefined.
-  // Sirve para parchear un objeto que vino de GAS con lo que trae Firestore, sin
-  // borrar campos que FS no tenga (esos quedan con el valor de GAS).
-  function _parcharDefinidos(destino, fuente) {
-    Object.keys(fuente).forEach(function (k) {
-      if (fuente[k] !== undefined) destino[k] = fuente[k];
-    });
   }
 
   function cerrarSesionForzado() {
