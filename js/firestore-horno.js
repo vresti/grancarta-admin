@@ -1082,25 +1082,48 @@
 
   // Lectura enriquecida para el admin (misma forma que daba dashboard_completo):
   // { por_local: { idLocal: [pub...] }, cartas_catalogo: [...] }
-  async function listarPublicacionesEnriquecidas(idEmpresa) {
+  // preloaded (opcional): { empData, localesDocs, cartasDocs } ya leídos por el
+  // caller (armarDashboardFS) para NO re-leer empresa/locales/cartas. Si no vienen,
+  // se leen EN PARALELO (llamada standalone, p.ej. app.js).
+  async function listarPublicacionesEnriquecidas(idEmpresa, preloaded) {
     const D = db();
-    const empSnap = await D.collection('empresas').doc(idEmpresa).get();
-    const emp = empSnap.exists ? empSnap.data() : {};
+    const empRef = D.collection('empresas').doc(idEmpresa);
+
+    let emp, localesDocs, cartasDocs;
+    if (preloaded && preloaded.empData && preloaded.localesDocs && preloaded.cartasDocs) {
+      emp = preloaded.empData;
+      localesDocs = preloaded.localesDocs;
+      cartasDocs = preloaded.cartasDocs;
+    } else {
+      const res = await Promise.all([
+        empRef.get(),
+        empRef.collection('locales').get(),
+        empRef.collection('cartas').get()
+      ]);
+      emp = res[0].exists ? res[0].data() : {};
+      localesDocs = res[1].docs;
+      cartasDocs = res[2].docs;
+    }
     const empSlug = emp.slug || '';
 
-    const localesSnap = await D.collection('empresas').doc(idEmpresa).collection('locales').get();
     const locales = {};
-    localesSnap.docs.forEach(function (d) { locales[d.id] = d.data(); });
+    localesDocs.forEach(function (d) { locales[d.id] = d.data(); });
 
-    const cartasSnap = await D.collection('empresas').doc(idEmpresa).collection('cartas').get();
     const cartas = {};
-    cartasSnap.docs.forEach(function (d) { cartas[d.id] = Object.assign({ id: d.id }, d.data()); });
+    cartasDocs.forEach(function (d) { cartas[d.id] = Object.assign({ id: d.id }, d.data()); });
+
+    // PERF: publicaciones de TODOS los locales EN PARALELO (antes: 1 query por
+    // local en serie = N+1).
+    const idLocales = Object.keys(locales);
+    const pubsPorLocal = await Promise.all(
+      idLocales.map(function (idLocal) { return _pubsDelLocal(idEmpresa, idLocal); })
+    );
 
     const porLocal = {};
     const cartasPublicadas = {};
-    for (const idLocal of Object.keys(locales)) {
+    idLocales.forEach(function (idLocal, _i) {
       const loc = locales[idLocal];
-      const pubs = await _pubsDelLocal(idEmpresa, idLocal);
+      const pubs = pubsPorLocal[_i];
       pubs.filter(function (p) { return p.estado !== 'archivada'; }).forEach(function (p) {
         if (p.estado === 'activa') cartasPublicadas[p.id_carta] = true;
         const carta = cartas[p.id_carta] || {};
@@ -1128,7 +1151,7 @@
           url_publica: url
         });
       });
-    }
+    });
 
     const catalogo = Object.keys(cartas).map(function (id) { return cartas[id]; })
       .filter(function (c) { return (c.estado || '') === 'activa'; })
@@ -1327,9 +1350,21 @@
   //   Devuelve: { empresa, locales:[...], publicaciones:{por_local,cartas_catalogo}, es_admin }
   async function armarDashboardFS(idEmpresa) {
     const D = db();
+    const empRef = D.collection('empresas').doc(idEmpresa);
+    const user = firebase.auth().currentUser;
+
+    // PERF: las 4 lecturas independientes (empresa, locales, cartas, usuario) van
+    // EN PARALELO (antes: en serie + empresa/locales re-leídas dentro de
+    // listarPublicacionesEnriquecidas). Las publicaciones (que dependen de la
+    // lista de locales) van en una 2ª tanda, también paralela por local.
+    const [empSnap, locSnap, cartasSnap, miSnap] = await Promise.all([
+      empRef.get(),
+      empRef.collection('locales').get(),
+      empRef.collection('cartas').get(),
+      (user && user.uid) ? D.collection('usuarios').doc(user.uid).get() : Promise.resolve(null)
+    ]);
 
     // 1) Empresa
-    const empSnap = await D.collection('empresas').doc(idEmpresa).get();
     if (!empSnap.exists) throw new Error('empresa ' + idEmpresa + ' no está en Firestore');
     const e = empSnap.data();
     const empresa = {
@@ -1344,7 +1379,6 @@
     };
 
     // 2) Locales (no archivados), mismo shape que el dashboard GAS
-    const locSnap = await D.collection('empresas').doc(idEmpresa).collection('locales').get();
     const locales = locSnap.docs
       .map(function (d) {
         const l = d.data();
@@ -1365,18 +1399,17 @@
       })
       .filter(function (l) { return l.Estado !== 'archivado'; });
 
-    // 3) Publicaciones (reusa el lector FS existente)
-    const publicaciones = await listarPublicacionesEnriquecidas(idEmpresa);
+    // 3) Publicaciones — reusa empresa/locales/cartas YA leídos (no re-lee) y
+    //    paraleliza las publicaciones por local.
+    const publicaciones = await listarPublicacionesEnriquecidas(idEmpresa, {
+      empData: e, localesDocs: locSnap.docs, cartasDocs: cartasSnap.docs
+    });
 
-    // 4) es_admin desde el propio doc usuarios/{uid}
+    // 4) es_admin desde el doc usuarios/{uid} ya leído arriba
     let esAdmin = false;
     try {
-      const user = firebase.auth().currentUser;
-      if (user && user.uid) {
-        const miSnap = await D.collection('usuarios').doc(user.uid).get();
-        const roles = (miSnap.exists && Array.isArray(miSnap.data().roles)) ? miSnap.data().roles : [];
-        esAdmin = roles.some(function (r) { return String(r.tipo || '').toLowerCase().trim() === 'admin'; });
-      }
+      const roles = (miSnap && miSnap.exists && Array.isArray(miSnap.data().roles)) ? miSnap.data().roles : [];
+      esAdmin = roles.some(function (r) { return String(r.tipo || '').toLowerCase().trim() === 'admin'; });
     } catch (err) {
       console.warn('[FS] no se pudo derivar es_admin de FS:', err && err.message);
     }
