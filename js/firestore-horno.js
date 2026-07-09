@@ -312,6 +312,62 @@
     return idCarta;
   }
 
+  // Siembra una CARTA DE EJEMPLO para una empresa que arranca de cero (sin cartas).
+  // 2 secciones × 2 productos de muestra, precios de ejemplo, todo visible, y la deja
+  // en estado 'activa' → lista para publicar de una. Usa la estructura NORMAL de
+  // secciones/productos, así el editor de siempre la edita y la borra sin nada especial.
+  // Devuelve el id de la carta creada.
+  async function sembrarCartaEjemplo(idEmpresa) {
+    const idCarta = await crearCarta(idEmpresa, {
+      nombre: 'Carta de ejemplo',
+      descripcion: 'Carta de muestra: editá o borrá estas secciones y productos, cambiá los precios, y cuando esté lista publicala.',
+      redondeo: '10'
+    });
+
+    // 2 secciones × 2 productos. Precios de ejemplo (el dueño los cambia).
+    const secciones = [
+      {
+        nombre: 'Entradas', descripcion: '', orden: 1,
+        productos: [
+          { nombre: 'Empanada de carne', descripcion: 'Producto de ejemplo — editalo o borralo', precio: 2500, orden: 1 },
+          { nombre: 'Provoleta',         descripcion: 'Producto de ejemplo — editalo o borralo', precio: 4000, orden: 2 }
+        ]
+      },
+      {
+        nombre: 'Principales', descripcion: '', orden: 2,
+        productos: [
+          { nombre: 'Milanesa con papas', descripcion: 'Producto de ejemplo — editalo o borralo', precio: 8000,  orden: 1 },
+          { nombre: 'Bife de chorizo',    descripcion: 'Producto de ejemplo — editalo o borralo', precio: 12000, orden: 2 }
+        ]
+      }
+    ];
+
+    for (const sec of secciones) {
+      const idSeccion = await generarId('SCC');
+      await crearSeccion(idEmpresa, idCarta, idSeccion, {
+        nombre: sec.nombre, descripcion: sec.descripcion, orden: sec.orden
+      });
+      for (const p of sec.productos) {
+        const idProducto = await generarId('PRD');
+        await crearProducto(idEmpresa, idCarta, idProducto, {
+          id_seccion: idSeccion,
+          nombre: p.nombre,
+          descripcion: p.descripcion,
+          precio: p.precio,
+          foto_url: '',
+          etiquetas: { alergenos: [], vegetariano: false, sin_tacc: false, picante: false },
+          estado_visibilidad: 'visible',
+          disponible_hoy: true,
+          orden: p.orden
+        });
+      }
+    }
+
+    // Dejarla activa → lista para publicar (crearCarta la deja en 'borrador').
+    await actualizarCarta(idEmpresa, idCarta, { estado: 'activa' });
+    return idCarta;
+  }
+
   // Duplica una carta (carta + secciones + productos) dentro de la misma empresa.
   // Aplica un modificador % a los precios y redondea según la carta nueva.
   // La carta nueva queda en 'borrador'. Genera todos los IDs en Firestore.
@@ -1443,6 +1499,7 @@
     listarCartas: listarCartas,
     actualizarCarta: actualizarCarta,
     crearCarta: crearCarta,
+    sembrarCartaEjemplo: sembrarCartaEjemplo,
     duplicarCarta: duplicarCarta,
     actualizarSeccion: actualizarSeccion,
     crearSeccion: crearSeccion,

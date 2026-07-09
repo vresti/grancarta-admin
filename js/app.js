@@ -2274,8 +2274,9 @@ const AdminApp = (function() {
         <div class="empty-state">
           <div class="empty-state-icon">📋</div>
           <div class="empty-state-title">No hay cartas todavía</div>
-          <div class="empty-state-detail">Creá la primera carta de este local. Después podrás agregar secciones y productos.</div>
-          <button class="btn btn-primary" onclick="abrirModalCartaNueva()">+ Crear primera carta</button>
+          <div class="empty-state-detail">Empezá con una carta de ejemplo (2 secciones y productos de muestra que después editás o borrás), o creá una vacía desde cero.</div>
+          <button class="btn btn-primary" id="btn-carta-ejemplo" onclick="sembrarCartaEjemplo()">🍽️ Empezar con una carta de ejemplo</button>
+          <button class="btn btn-secondary" onclick="abrirModalCartaNueva()">Crear carta vacía</button>
         </div>
       `;
       return;
@@ -2374,6 +2375,22 @@ const AdminApp = (function() {
     AdminUI.toast('Carta creada', 'success');
     cerrarModales();
     await cargarCartas();
+  }
+
+  // Siembra una carta de ejemplo (2 secciones × 2 productos, ya activa) para una
+  // empresa que arranca sin cartas. Después el dueño edita/borra desde el editor.
+  async function sembrarCartaEjemplo() {
+    if (!state.cartasContexto) return;
+    const btn = document.getElementById('btn-carta-ejemplo');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creando carta de ejemplo…'; }
+    try {
+      await window.GCFirestore.sembrarCartaEjemplo(state.cartasContexto.idEmpresa);
+      AdminUI.toast('Carta de ejemplo lista — editala y publicala', 'success');
+      await cargarCartas();
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '🍽️ Empezar con una carta de ejemplo'; }
+      AdminUI.toast('No pudimos crear la carta de ejemplo: ' + ((e && e.message) || e), 'error');
+    }
   }
 
   // --- Duplicar ---
@@ -4275,6 +4292,7 @@ const AdminApp = (function() {
     guardarWhatsApp,
     abrirModalCartaNueva,
     confirmarCartaNueva,
+    sembrarCartaEjemplo,
     abrirModalDuplicarCarta,
     confirmarCartaDuplicar,
     abrirModalEditarCarta,
@@ -4379,6 +4397,7 @@ function cerrarModalWhatsApp() { AdminApp.cerrarModalWhatsApp(); }
 function guardarWhatsApp() { AdminApp.guardarWhatsApp(); }
 function abrirModalCartaNueva() { AdminApp.abrirModalCartaNueva(); }
 function confirmarCartaNueva() { AdminApp.confirmarCartaNueva(); }
+function sembrarCartaEjemplo() { AdminApp.sembrarCartaEjemplo(); }
 function abrirModalDuplicarCarta(idCarta, nombreCarta) { AdminApp.abrirModalDuplicarCarta(idCarta, nombreCarta); }
 function confirmarCartaDuplicar() { AdminApp.confirmarCartaDuplicar(); }
 function abrirModalEditarCarta(idCarta) { AdminApp.abrirModalEditarCarta(idCarta); }
