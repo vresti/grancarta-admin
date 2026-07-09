@@ -30,8 +30,6 @@ const AdminApp = (function() {
     // en el query string, lo guardamos en localStorage y limpiamos la URL
     const urlParams = new URLSearchParams(window.location.search);
     const tokenDeURL = urlParams.get('t');
-    window._perfStart = Number(urlParams.get('perf')) || null;  // [PERF-TEMP]
-    if (window._perfStart) console.log('[PERF] admin · init (cross-page: mint+600ms+redirect+load):', (Date.now() - window._perfStart) + 'ms');  // [PERF-TEMP]
     if (tokenDeURL) {
       localStorage.setItem('admin_jwt', tokenDeURL);
       // Guardamos también el mail si vino (es opcional, podemos obtenerlo
@@ -254,16 +252,12 @@ const AdminApp = (function() {
       try {
         if (typeof firebase === 'undefined' || !firebase.auth) return false;
         if (firebase.auth().currentUser) return true;
-        const _pTok = performance.now();  // [PERF-TEMP]
         const resp = await AdminAPI.obtenerTokenFirebase();
-        console.log('[PERF] admin · obtenerTokenFirebase (GAS):', Math.round(performance.now() - _pTok) + 'ms');  // [PERF-TEMP]
         if (!resp || !resp.ok || !resp.firebase_token) {
           console.warn('[Firebase] no se obtuvo token:', resp && resp.error);
           return false;
         }
-        const _pSign = performance.now();  // [PERF-TEMP]
         await firebase.auth().signInWithCustomToken(resp.firebase_token);
-        console.log('[PERF] admin · signInWithCustomToken (Firebase):', Math.round(performance.now() - _pSign) + 'ms');  // [PERF-TEMP]
         const u = firebase.auth().currentUser;
         console.log('[Firebase] sesion iniciada:', u && u.uid);
         return true;
@@ -372,15 +366,11 @@ const AdminApp = (function() {
     }
 
     try {
-      const _pFb = performance.now();  // [PERF-TEMP]
       const fsOk = await asegurarSesionFirebase();
-      console.log('[PERF] admin · esperar sesión Firebase (total del await):', Math.round(performance.now() - _pFb) + 'ms');  // [PERF-TEMP]
       if (!fsOk || !window.GCFirestore || !window.GCFirestore.armarDashboardFS) {
         throw new Error('sesión Firestore no disponible');
       }
-      const _pFs = performance.now();  // [PERF-TEMP]
       const d = await window.GCFirestore.armarDashboardFS(state.idEmpresaActiva);
-      console.log('[PERF] admin · armarDashboardFS (lee sucursales de FS):', Math.round(performance.now() - _pFs) + 'ms');  // [PERF-TEMP]
 
       state.estructura = { empresas: [d.empresa], locales: d.locales };
       state.esAdmin = !!d.es_admin;
@@ -396,7 +386,6 @@ const AdminApp = (function() {
       AdminUI.setLoading(false);
       renderDashboard();
       console.log('[FS] dashboard armado desde Firestore (empresa ' + state.idEmpresaActiva + ').');
-      if (window._perfStart) console.log('[PERF] ⏱ TOTAL desde click empresa → sucursales visibles:', (Date.now() - window._perfStart) + 'ms');  // [PERF-TEMP]
     } catch (err) {
       // El fallback GAS se retiró (bitácora 049): sin red a GAS. Mostramos un
       // error propio y dejamos reintentar. (En todo el soak FS nunca falló.)
