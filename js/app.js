@@ -30,6 +30,10 @@ const AdminApp = (function() {
     // en el query string, lo guardamos en localStorage y limpiamos la URL
     const urlParams = new URLSearchParams(window.location.search);
     const tokenDeURL = urlParams.get('t');
+    // PERF: token de Firebase pre-minteado por el selector (ambito_seleccionar) →
+    // lo usamos directo y NOS SALTEAMOS la llamada GAS obtenerTokenFirebase.
+    const fbTokenDeURL = urlParams.get('fb');
+    if (fbTokenDeURL) state._fbTokenPreMint = fbTokenDeURL;
     if (tokenDeURL) {
       localStorage.setItem('admin_jwt', tokenDeURL);
       // Guardamos también el mail si vino (es opcional, podemos obtenerlo
@@ -252,6 +256,23 @@ const AdminApp = (function() {
       try {
         if (typeof firebase === 'undefined' || !firebase.auth) return false;
         if (firebase.auth().currentUser) return true;
+
+        // PERF: si el selector ya nos pasó el token de Firebase pre-minteado
+        // (?fb=), lo usamos DIRECTO y nos salteamos la llamada GAS
+        // obtenerTokenFirebase (ahorra ~2-3s). Si falla, caemos al camino GAS.
+        const preMint = state._fbTokenPreMint || null;
+        state._fbTokenPreMint = null;  // usar una sola vez
+        if (preMint) {
+          try {
+            await firebase.auth().signInWithCustomToken(preMint);
+            console.log('[Firebase] sesion iniciada (token pre-minteado):', firebase.auth().currentUser && firebase.auth().currentUser.uid);
+            return true;
+          } catch (ePre) {
+            console.warn('[Firebase] token pre-minteado no sirvió, pido uno nuevo:', ePre && ePre.message);
+            // sigue al fallback GAS de abajo
+          }
+        }
+
         const resp = await AdminAPI.obtenerTokenFirebase();
         if (!resp || !resp.ok || !resp.firebase_token) {
           console.warn('[Firebase] no se obtuvo token:', resp && resp.error);
