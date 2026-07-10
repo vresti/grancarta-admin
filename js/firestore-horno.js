@@ -1519,9 +1519,65 @@
     return { ok: true, colaboradores: colaboradores, locales_empresa: localesEmpresa };
   }
 
+  // ---------------------------------------------------------------------------
+  // CATÁLOGO DE PRODUCTOS (por empresa) — base maestra de productos que alimenta
+  // el armado de cartas. Ruta: empresas/{emp}/catalogo/{CAT-XXXX}.
+  // Campos: nombre, detalle, precio (precio puede ser 0 — ej. servicio de mesa).
+  // El precio del catálogo es solo el "sugerido"; al armar cada carta se puede
+  // editar sin tocar la base. Requiere contadores/CAT sembrado (seed_contadores).
+  // ---------------------------------------------------------------------------
+  async function catalogoListar(idEmpresa) {
+    const snap = await db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('catalogo').get();
+    return snap.docs.map(function (d) {
+      const c = d.data();
+      return {
+        Id_Catalogo: d.id,
+        Nombre: c.nombre || '',
+        Detalle: c.detalle || '',
+        Precio: (c.precio === undefined || c.precio === null) ? 0 : c.precio
+      };
+    }).sort(function (a, b) {
+      return a.Nombre.localeCompare(b.Nombre, 'es', { sensitivity: 'base' });
+    });
+  }
+
+  async function catalogoCrear(idEmpresa, datos) {
+    const idCat = await generarId('CAT');
+    await db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('catalogo').doc(idCat)
+      .set({
+        id_empresa: idEmpresa,
+        nombre: datos.nombre || '',
+        detalle: datos.detalle || '',
+        precio: (datos.precio === undefined || datos.precio === null) ? 0 : datos.precio
+      });
+    return idCat;
+  }
+
+  async function catalogoActualizar(idEmpresa, idCat, campos) {
+    await db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('catalogo').doc(idCat)
+      .update(campos);
+  }
+
+  async function catalogoEliminar(idEmpresa, idCat) {
+    await db()
+      .collection('empresas').doc(idEmpresa)
+      .collection('catalogo').doc(idCat)
+      .delete();
+  }
+
   // Exponer el módulo
   window.GCFirestore = {
     colaboradorListar: colaboradorListar,
+    catalogoListar: catalogoListar,
+    catalogoCrear: catalogoCrear,
+    catalogoActualizar: catalogoActualizar,
+    catalogoEliminar: catalogoEliminar,
     generarId: generarId,
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,

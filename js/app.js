@@ -502,6 +502,9 @@ const AdminApp = (function() {
               </div>
             </div>
             <div class="empresa-block-actions">
+              <button class="btn btn-secondary btn-sm" onclick="abrirCatalogo('${e.Id_Empresa}')">
+                📖 Catálogo
+              </button>
               <button class="btn btn-secondary btn-sm" onclick="abrirEquipo('${e.Id_Empresa}')">
                 👥 Equipo
               </button>
@@ -4283,6 +4286,202 @@ const AdminApp = (function() {
     AdminUI.toast('Administrador agregado', 'success');
   }
 
+  // ============================================================
+  // CATÁLOGO DE PRODUCTOS (por empresa) — ABM sobre la base
+  // maestra empresas/{emp}/catalogo. Es la fuente de productos
+  // para armar cartas rápido (Paso 2 la enganchará al editor).
+  // ============================================================
+  const catalogoState = {
+    idEmpresa: '',
+    nombreEmpresa: '',
+    productos: [],
+    editandoId: null
+  };
+
+  function _catNorm(s) {
+    return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function _catPrecioFmt(precio) {
+    const n = Number(precio) || 0;
+    return '$' + n.toLocaleString('es-AR');
+  }
+
+  async function abrirCatalogo(idEmpresa) {
+    catalogoState.idEmpresa = idEmpresa;
+    const emp = (state.estructura.empresas || []).find(function(e) {
+      return e.Id_Empresa === idEmpresa;
+    });
+    catalogoState.nombreEmpresa = emp ? emp.Nombre_Comercial : idEmpresa;
+
+    AdminUI.mostrarPantalla('screen-catalogo');
+    document.getElementById('catalogo-empresa-nombre').textContent = catalogoState.nombreEmpresa;
+    document.getElementById('catalogo-buscador').value = '';
+    document.getElementById('catalogo-list').innerHTML =
+      '<div class="equipo-loading">Cargando catálogo…</div>';
+
+    await cargarCatalogo();
+  }
+
+  async function cargarCatalogo() {
+    let productos;
+    try {
+      productos = await window.GCFirestore.catalogoListar(catalogoState.idEmpresa);
+    } catch (e) {
+      console.error('[FS] catalogoListar falló:', e && e.message);
+      AdminUI.toast('No pudimos cargar el catálogo. Reintentá.', 'error');
+      document.getElementById('catalogo-list').innerHTML = '';
+      return;
+    }
+    catalogoState.productos = productos || [];
+    renderCatalogo();
+  }
+
+  function renderCatalogo() {
+    const term = (document.getElementById('catalogo-buscador').value || '').toLowerCase().trim();
+    let lista = catalogoState.productos.slice();
+
+    if (term) {
+      lista = lista.filter(function(p) {
+        return (p.Nombre || '').toLowerCase().indexOf(term) !== -1
+            || (p.Detalle || '').toLowerCase().indexOf(term) !== -1;
+      });
+    }
+
+    const cont = document.getElementById('catalogo-list');
+    const empty = document.getElementById('catalogo-empty');
+    const count = document.getElementById('catalogo-count');
+    count.textContent = catalogoState.productos.length + ' producto(s)';
+
+    if (lista.length === 0) {
+      cont.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    let html = '';
+    lista.forEach(function(p) {
+      const detalle = p.Detalle
+        ? '<div class="catalogo-card-detalle">' + AdminUI.escapeHtml(p.Detalle) + '</div>'
+        : '';
+      html += `
+        <div class="catalogo-card">
+          <div class="catalogo-card-main">
+            <div class="catalogo-card-nombre">${AdminUI.escapeHtml(p.Nombre)}</div>
+            ${detalle}
+          </div>
+          <div class="catalogo-card-precio">${_catPrecioFmt(p.Precio)}</div>
+          <div class="catalogo-card-acciones">
+            <button class="btn-icon-mini" title="Editar"
+                    onclick="abrirModalCatalogoEditar('${AdminUI.escapeHtml(p.Id_Catalogo)}')">✏️</button>
+            <button class="btn-icon-mini" title="Borrar"
+                    onclick="eliminarProductoCatalogo('${AdminUI.escapeHtml(p.Id_Catalogo)}', '${AdminUI.escapeHtml(p.Nombre)}')">🗑️</button>
+          </div>
+        </div>
+      `;
+    });
+    cont.innerHTML = html;
+  }
+
+  function filtrarCatalogo() { renderCatalogo(); }
+
+  function abrirModalCatalogoNuevo() {
+    catalogoState.editandoId = null;
+    document.getElementById('catalogo-modal-titulo').textContent = 'Nuevo producto';
+    document.getElementById('catalogo-nombre').value = '';
+    document.getElementById('catalogo-detalle').value = '';
+    document.getElementById('catalogo-precio').value = '';
+    document.getElementById('modal-catalogo').classList.add('is-visible');
+    setTimeout(function() { document.getElementById('catalogo-nombre').focus(); }, 200);
+  }
+
+  function abrirModalCatalogoEditar(idCat) {
+    const p = catalogoState.productos.find(function(x) { return x.Id_Catalogo === idCat; });
+    if (!p) return;
+    catalogoState.editandoId = idCat;
+    document.getElementById('catalogo-modal-titulo').textContent = 'Editar producto';
+    document.getElementById('catalogo-nombre').value = p.Nombre || '';
+    document.getElementById('catalogo-detalle').value = p.Detalle || '';
+    document.getElementById('catalogo-precio').value = (p.Precio === 0 || p.Precio) ? p.Precio : '';
+    document.getElementById('modal-catalogo').classList.add('is-visible');
+    setTimeout(function() { document.getElementById('catalogo-nombre').focus(); }, 200);
+  }
+
+  async function confirmarCatalogo() {
+    const nombre = document.getElementById('catalogo-nombre').value.trim();
+    const detalle = document.getElementById('catalogo-detalle').value.trim();
+    const precioRaw = document.getElementById('catalogo-precio').value.trim();
+
+    if (nombre.length < 2) {
+      AdminUI.toast('Poné un nombre de al menos 2 letras', 'error');
+      return;
+    }
+    // Precio: vacío = 0 (permitido, ej. servicio de mesa). No admite negativos.
+    const precio = precioRaw === '' ? 0 : Number(precioRaw);
+    if (isNaN(precio) || precio < 0) {
+      AdminUI.toast('El precio tiene que ser 0 o mayor', 'error');
+      return;
+    }
+
+    // Duplicado exacto (nombre + detalle) → aviso, sin crear. Las VARIANTES
+    // (misma milanesa distinto detalle) sí se permiten: solo bloquea el 100% igual.
+    const claveNueva = _catNorm(nombre) + '¦' + _catNorm(detalle);
+    const duplicado = catalogoState.productos.some(function(p) {
+      if (p.Id_Catalogo === catalogoState.editandoId) return false; // no chocar consigo mismo al editar
+      return (_catNorm(p.Nombre) + '¦' + _catNorm(p.Detalle)) === claveNueva;
+    });
+    if (duplicado) {
+      AdminUI.toast('Ese producto ya está en el catálogo (mismo nombre y detalle)', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-catalogo-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    try {
+      if (catalogoState.editandoId) {
+        await window.GCFirestore.catalogoActualizar(catalogoState.idEmpresa, catalogoState.editandoId, {
+          nombre: nombre, detalle: detalle, precio: precio
+        });
+        AdminUI.toast('Producto actualizado', 'success');
+      } else {
+        await window.GCFirestore.catalogoCrear(catalogoState.idEmpresa, {
+          nombre: nombre, detalle: detalle, precio: precio
+        });
+        AdminUI.toast('Producto agregado al catálogo', 'success');
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar';
+      AdminUI.toast('No pudimos guardar: ' + ((e && e.message) || e), 'error');
+      return;
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Guardar';
+    cerrarModales();
+    await cargarCatalogo();
+  }
+
+  async function eliminarProductoCatalogo(idCat, nombre) {
+    const ok = await AdminUI.confirm({
+      title: 'Borrar del catálogo',
+      message: '¿Borrar "' + nombre + '" de la base de productos? No afecta las cartas ya armadas.',
+      okLabel: 'Sí, borrar',
+      cancelLabel: 'Cancelar'
+    });
+    if (!ok) return;
+    try {
+      await window.GCFirestore.catalogoEliminar(catalogoState.idEmpresa, idCat);
+      AdminUI.toast('Producto borrado', 'success');
+      await cargarCatalogo();
+    } catch (e) {
+      AdminUI.toast('No pudimos borrar: ' + ((e && e.message) || e), 'error');
+    }
+  }
+
   return {
     init,
     solicitarCodigo,
@@ -4339,6 +4538,13 @@ const AdminApp = (function() {
     cambiarDispositivoPreview,
     seleccionarTemplate,
     cerrarModales,
+    // Catálogo de productos (por empresa)
+    abrirCatalogo,
+    filtrarCatalogo,
+    abrirModalCatalogoNuevo,
+    abrirModalCatalogoEditar,
+    confirmarCatalogo,
+    eliminarProductoCatalogo,
     // Equipo / Colaboradores
     abrirEquipo,
     filtrarEquipo,
@@ -4448,6 +4654,17 @@ function abrirVistaPrevia() { AdminApp.abrirVistaPrevia(); }
 function cerrarVistaPrevia() { AdminApp.cerrarVistaPrevia(); }
 function cambiarDispositivoPreview(d) { AdminApp.cambiarDispositivoPreview(d); }
 function seleccionarTemplate(t) { AdminApp.seleccionarTemplate(t); }
+
+
+// ============================================================
+// FUNCIONES GLOBALES — CATÁLOGO DE PRODUCTOS
+// ============================================================
+function abrirCatalogo(idEmpresa) { AdminApp.abrirCatalogo(idEmpresa); }
+function filtrarCatalogo() { AdminApp.filtrarCatalogo(); }
+function abrirModalCatalogoNuevo() { AdminApp.abrirModalCatalogoNuevo(); }
+function abrirModalCatalogoEditar(idCat) { AdminApp.abrirModalCatalogoEditar(idCat); }
+function confirmarCatalogo() { AdminApp.confirmarCatalogo(); }
+function eliminarProductoCatalogo(idCat, nombre) { AdminApp.eliminarProductoCatalogo(idCat, nombre); }
 
 
 // ============================================================
