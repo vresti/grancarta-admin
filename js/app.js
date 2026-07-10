@@ -502,6 +502,9 @@ const AdminApp = (function() {
               </div>
             </div>
             <div class="empresa-block-actions">
+              <button class="btn btn-secondary btn-sm" onclick="abrirCartasEmpresa('${e.Id_Empresa}', '${AdminUI.escapeHtml(e.Nombre_Comercial)}')">
+                📋 Cartas
+              </button>
               <button class="btn btn-secondary btn-sm" onclick="abrirCatalogo('${e.Id_Empresa}')">
                 📖 Catálogo
               </button>
@@ -685,7 +688,7 @@ const AdminApp = (function() {
               <br><small>Creá la primera carta y volvé acá para asignarla a un canal.</small>
             </div>
             <button class="btn btn-secondary btn-sm"
-                    onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
+                    onclick="abrirCartasEmpresa('${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
               + Crear carta
             </button>
           </div>
@@ -755,12 +758,6 @@ const AdminApp = (function() {
             <div class="local-card-meta">
               📍 ${AdminUI.escapeHtml(direccion)} ${ciudad ? '· ' + AdminUI.escapeHtml(ciudad) : ''}
             </div>
-          </div>
-          <div class="local-card-actions">
-            <button class="btn btn-secondary btn-sm"
-                    onclick="abrirCartasDelLocal('${AdminUI.escapeHtml(l.Id_Local)}', '${AdminUI.escapeHtml(l.Id_Empresa)}', '${AdminUI.escapeHtml(l.Nombre)}', '${AdminUI.escapeHtml(nombreEmpresa)}')">
-              📋 Cartas
-            </button>
           </div>
         </div>
         ${bloquePublicacionesHtml}
@@ -2258,16 +2255,19 @@ const AdminApp = (function() {
     AdminUI.toast('Canal renombrado', 'info');
   }
 
-  async function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
+  // Cartas es POR EMPRESA (el catálogo de cartas se lista con idEmpresa; el publicar
+  // arma canales de todos los locales). Por eso el botón vive en el header de la
+  // empresa, no en la sucursal. nombreLocal queda vacío (no hay sucursal en juego).
+  async function abrirCartasEmpresa(idEmpresa, nombreEmpresa) {
     state.cartasContexto = {
-      idLocal: idLocal,
+      idLocal: null,
       idEmpresa: idEmpresa,
-      nombreLocal: nombreLocal,
+      nombreLocal: '',
       nombreEmpresa: nombreEmpresa,
       cartas: []
     };
 
-    document.getElementById('cartas-titulo').textContent = nombreLocal;
+    document.getElementById('cartas-titulo').textContent = 'Cartas';
     document.getElementById('cartas-subtitulo').textContent = nombreEmpresa;
 
     AdminUI.mostrarPantalla('screen-cartas');
@@ -2699,7 +2699,11 @@ const AdminApp = (function() {
 
     document.getElementById('editor-titulo').textContent = datos.carta.Nombre;
     document.getElementById('editor-subtitulo').textContent =
-      (state.cartasContexto ? state.cartasContexto.nombreLocal + ' · ' + state.cartasContexto.nombreEmpresa : '');
+      (state.cartasContexto
+        ? (state.cartasContexto.nombreLocal
+            ? state.cartasContexto.nombreLocal + ' · ' + state.cartasContexto.nombreEmpresa
+            : state.cartasContexto.nombreEmpresa)
+        : '');
 
     // Mostrar/ocultar botón "📤 Publicar ahora" según Estado de la carta
     // Solo "activa" = "lista para publicar" puede publicarse.
@@ -4639,7 +4643,7 @@ const AdminApp = (function() {
     nuevaSucursal,
     abrirEmpresa,
     volverADashboard,
-    abrirCartasDelLocal,
+    abrirCartasEmpresa,
     confirmarSwapPublicacion,
     ejecutarSwapPublicacion,
     abrirModalPublicarAhora,
@@ -4751,8 +4755,8 @@ function cancelarWizard() { Wizard.cancel(); }
 
 // Cartas
 function volverADashboard() { AdminApp.volverADashboard(); }
-function abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa) {
-  AdminApp.abrirCartasDelLocal(idLocal, idEmpresa, nombreLocal, nombreEmpresa);
+function abrirCartasEmpresa(idEmpresa, nombreEmpresa) {
+  AdminApp.abrirCartasEmpresa(idEmpresa, nombreEmpresa);
 }
 function confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId) {
   AdminApp.confirmarSwapPublicacion(idLocal, audienceSlug, idCartaActual, nombreCartaActual, selectId);
