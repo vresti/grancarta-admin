@@ -3130,9 +3130,10 @@ const AdminApp = (function() {
   // PRODUCTOS (modales y CRUD)
   // ============================================================
 
-  function abrirModalProductoNuevo(idSeccion) {
+  async function abrirModalProductoNuevo(idSeccion) {
     state.productoEditarId = null;
     state.productoSeccionId = idSeccion;
+    state.productoCatPick = null;
     document.getElementById('modal-producto-titulo').textContent = 'Nuevo producto';
     document.getElementById('producto-nombre').value = '';
     document.getElementById('producto-descripcion').value = '';
@@ -3143,10 +3144,20 @@ const AdminApp = (function() {
     document.querySelectorAll('[data-alergeno]').forEach(function(cb) { cb.checked = false; });
     document.getElementById('btn-producto-guardar').textContent = 'Crear producto';
 
+    // Paso 2: mostrar buscador del catálogo + checkbox de mirror (solo en alta).
+    document.getElementById('producto-cat-buscar').style.display = '';
+    document.getElementById('producto-cat-mirror-field').style.display = '';
+    document.getElementById('producto-cat-search').value = '';
+    document.getElementById('producto-cat-results').innerHTML = '';
+    _resetMirrorCheckbox();
+
     actualizarHintRedondeo();
 
     document.getElementById('modal-producto').classList.add('is-visible');
-    setTimeout(function() { document.getElementById('producto-nombre').focus(); }, 200);
+    setTimeout(function() { document.getElementById('producto-cat-search').focus(); }, 200);
+
+    // Cargar el catálogo de la empresa para el buscador (best-effort).
+    await _cargarCatalogoEditor();
   }
 
   function abrirModalProductoEditar(idProducto) {
@@ -3159,6 +3170,12 @@ const AdminApp = (function() {
 
     state.productoEditarId = idProducto;
     state.productoSeccionId = null;
+    state.productoCatPick = null;
+
+    // Paso 2: al editar un producto que ya existe, no hay interacción con el
+    // catálogo (ni buscador ni mirror).
+    document.getElementById('producto-cat-buscar').style.display = 'none';
+    document.getElementById('producto-cat-mirror-field').style.display = 'none';
 
     document.getElementById('modal-producto-titulo').textContent = 'Editar producto';
     document.getElementById('producto-nombre').value = producto.Nombre || '';
@@ -3194,6 +3211,122 @@ const AdminApp = (function() {
       ? 'Esta carta NO redondea precios.'
       : 'Esta carta redondea a múltiplos de $' + r + ' (se aplica en cambios masivos).';
     document.getElementById('producto-precio-hint').textContent = txt;
+  }
+
+  // ============================================================
+  // PASO 2 · Buscador del catálogo dentro del modal "Nuevo producto".
+  // Modelo: el catálogo es un MOLDE. Elegir rellena los campos (copia);
+  // editar el precio acá NO toca la base. El alta a mano puede espejarse
+  // al catálogo (checkbox), en una sola dirección. Cero sincronización.
+  // ============================================================
+  function _idEmpresaEditor() {
+    const ctx = state.editorContexto;
+    return ctx && (ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa));
+  }
+
+  async function _cargarCatalogoEditor() {
+    state.catalogoEditor = [];
+    const idEmpresa = _idEmpresaEditor();
+    if (!idEmpresa || !window.GCFirestore) return;
+    try {
+      state.catalogoEditor = await window.GCFirestore.catalogoListar(idEmpresa);
+    } catch (e) {
+      console.warn('[FS] no se pudo cargar el catálogo para el buscador:', e && e.message);
+    }
+  }
+
+  function _resetMirrorCheckbox() {
+    const chk = document.getElementById('producto-cat-mirror');
+    chk.checked = true;
+    chk.disabled = false;
+    document.getElementById('producto-cat-mirror-field').classList.remove('is-locked');
+    document.getElementById('producto-cat-mirror-hint').textContent =
+      'Se suma a tu base de productos para reusarlo en otras cartas.';
+  }
+
+  function buscarEnCatalogoProducto() {
+    const term = (document.getElementById('producto-cat-search').value || '').toLowerCase().trim();
+    const cont = document.getElementById('producto-cat-results');
+    const lista = state.catalogoEditor || [];
+
+    if (!term) { cont.innerHTML = ''; return; }
+
+    const matches = lista.filter(function(p) {
+      return (p.Nombre || '').toLowerCase().indexOf(term) !== -1
+          || (p.Detalle || '').toLowerCase().indexOf(term) !== -1;
+    }).slice(0, 8);
+
+    if (matches.length === 0) {
+      cont.innerHTML = '<div class="cat-search-empty">Sin coincidencias. Cargalo abajo como producto nuevo (queda tildado “También guardar en el catálogo”).</div>';
+      return;
+    }
+
+    let html = '';
+    matches.forEach(function(p) {
+      const det = p.Detalle
+        ? '<span class="cat-res-det">' + AdminUI.escapeHtml(p.Detalle) + '</span>'
+        : '';
+      html += `
+        <button type="button" class="cat-res" onclick="elegirDelCatalogo('${AdminUI.escapeHtml(p.Id_Catalogo)}')">
+          <span class="cat-res-nom">${AdminUI.escapeHtml(p.Nombre)}</span>
+          ${det}
+          <span class="cat-res-precio">${_catPrecioFmt(p.Precio)}</span>
+        </button>
+      `;
+    });
+    cont.innerHTML = html;
+  }
+
+  function elegirDelCatalogo(idCat) {
+    const p = (state.catalogoEditor || []).find(function(x) { return x.Id_Catalogo === idCat; });
+    if (!p) return;
+    state.productoCatPick = idCat;
+
+    document.getElementById('producto-nombre').value = p.Nombre || '';
+    document.getElementById('producto-descripcion').value = p.Detalle || '';
+    document.getElementById('producto-precio').value = (p.Precio === 0 || p.Precio) ? p.Precio : '';
+
+    // Vino del catálogo → ya está en la base: apagar y bloquear el mirror.
+    const chk = document.getElementById('producto-cat-mirror');
+    chk.checked = false;
+    chk.disabled = true;
+    document.getElementById('producto-cat-mirror-field').classList.add('is-locked');
+    document.getElementById('producto-cat-mirror-hint').textContent = 'Ya está en el catálogo.';
+
+    // Limpiar la búsqueda y saltar al precio (lo más común de ajustar por carta).
+    document.getElementById('producto-cat-search').value = '';
+    document.getElementById('producto-cat-results').innerHTML = '';
+    const precio = document.getElementById('producto-precio');
+    precio.focus(); precio.select();
+  }
+
+  // Si editás el nombre después de haber elegido del catálogo, dejás de estar
+  // "atado" a ese pick → se reactiva la opción de guardarlo en el catálogo.
+  function productoNombreEditado() {
+    if (state.productoCatPick) {
+      state.productoCatPick = null;
+      _resetMirrorCheckbox();
+    }
+  }
+
+  // Espeja el producto al catálogo si el checkbox está tildado y NO vino del
+  // catálogo. Dedup por nombre+detalle. Devuelve true si lo agregó (para el toast).
+  async function _mirrorAlCatalogoSiCorresponde(idEmpresa, nombre, detalle, precio) {
+    const chk = document.getElementById('producto-cat-mirror');
+    if (!chk || !chk.checked) return false;
+    if (state.productoCatPick) return false;
+    if (!window.GCFirestore) return false;
+
+    const claveNueva = _catNorm(nombre) + '¦' + _catNorm(detalle);
+    const yaExiste = (state.catalogoEditor || []).some(function(p) {
+      return (_catNorm(p.Nombre) + '¦' + _catNorm(p.Detalle)) === claveNueva;
+    });
+    if (yaExiste) return false;
+
+    await window.GCFirestore.catalogoCrear(idEmpresa, {
+      nombre: nombre, detalle: detalle, precio: precio
+    });
+    return true;
   }
 
   async function confirmarProducto() {
@@ -3314,9 +3447,19 @@ const AdminApp = (function() {
         ctx.stats.productos_disponibles = (ctx.stats.productos_disponibles || 0) + 1;
       }
 
+      // 4.5) Paso 2: espejar al catálogo si corresponde (alta a mano tildada).
+      let mensajeOk = 'Producto creado';
+      try {
+        if (await _mirrorAlCatalogoSiCorresponde(idEmpresa, nombre, descripcion, precio)) {
+          mensajeOk = 'Agregado a la carta y al catálogo';
+        }
+      } catch (e) {
+        console.warn('[FS] no se pudo espejar al catálogo:', e && e.message);
+      }
+
       btn.disabled = false;
       btn.textContent = 'Crear producto';
-      AdminUI.toast('Producto creado', 'success');
+      AdminUI.toast(mensajeOk, 'success');
       cerrarModales();
       renderEditor();
 
@@ -4530,6 +4673,9 @@ const AdminApp = (function() {
     abrirModalProductoNuevo,
     abrirModalProductoEditar,
     confirmarProducto,
+    buscarEnCatalogoProducto,
+    elegirDelCatalogo,
+    productoNombreEditado,
     ordenarProducto,
     toggleDisponible,
     eliminarProducto,
@@ -4645,6 +4791,9 @@ function eliminarSeccion(id, nombre, cant) { AdminApp.eliminarSeccion(id, nombre
 function abrirModalProductoNuevo(idSeccion) { AdminApp.abrirModalProductoNuevo(idSeccion); }
 function abrirModalProductoEditar(id) { AdminApp.abrirModalProductoEditar(id); }
 function confirmarProducto() { AdminApp.confirmarProducto(); }
+function buscarEnCatalogoProducto() { AdminApp.buscarEnCatalogoProducto(); }
+function elegirDelCatalogo(idCat) { AdminApp.elegirDelCatalogo(idCat); }
+function productoNombreEditado() { AdminApp.productoNombreEditado(); }
 function ordenarProducto(id, dir) { AdminApp.ordenarProducto(id, dir); }
 function toggleDisponible(id, estado) { AdminApp.toggleDisponible(id, estado); }
 function eliminarProducto(id, nombre) { AdminApp.eliminarProducto(id, nombre); }

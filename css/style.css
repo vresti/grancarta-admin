@@ -3354,3 +3354,48 @@ input:focus-visible {
     font-size: 0.65rem;
   }
 }
+
+/* ============================================================ */
+/* PASO 2 · Buscador del catálogo dentro del modal "Producto"   */
+/* ============================================================ */
+.cat-buscar-field .cat-search-results {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.cat-res {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "nom precio" "det precio";
+  align-items: center;
+  gap: 0 0.75rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  color: inherit;
+  font: inherit;
+}
+.cat-res:hover { border-color: #2563EB; background: rgba(37, 99, 235, 0.10); }
+.cat-res-nom { grid-area: nom; font-weight: 600; color: #e6edf3; font-size: 0.9rem; }
+.cat-res-det { grid-area: det; color: #8b949e; font-size: 0.78rem; margin-top: 0.1rem; }
+.cat-res-precio {
+  grid-area: precio; font-weight: 700; color: #3fb950; font-size: 0.9rem;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.cat-search-empty {
+  color: #8b949e; font-size: 0.82rem; padding: 0.5rem 0.2rem; line-height: 1.4;
+}
+.cat-mirror-check {
+  display: flex; align-items: center; gap: 0.5rem;
+  cursor: pointer; font-size: 0.9rem; color: #e6edf3;
+}
+.cat-mirror-check input { width: 16px; height: 16px; cursor: pointer; }
+.cat-mirror-field.is-locked { opacity: 0.6; }
+.cat-mirror-field.is-locked .cat-mirror-check { cursor: default; }

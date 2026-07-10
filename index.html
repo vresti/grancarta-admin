@@ -1102,13 +1102,28 @@
       </header>
 
       <div class="modal-body">
+
+        <!-- Buscador del catálogo (Paso 2). Solo en ALTA; se oculta al editar. -->
+        <div class="form-field cat-buscar-field" id="producto-cat-buscar">
+          <label class="form-label" for="producto-cat-search">🔎 Buscar en tu catálogo</label>
+          <input type="text"
+                 id="producto-cat-search"
+                 class="form-input"
+                 placeholder="Escribí para traer un producto de tu catálogo…"
+                 autocomplete="off"
+                 oninput="buscarEnCatalogoProducto()">
+          <div class="cat-search-results" id="producto-cat-results"></div>
+          <div class="form-hint">Elegí uno y se completan nombre, detalle y precio. Después podés editar el precio; el catálogo no se toca.</div>
+        </div>
+
         <div class="form-field">
           <label class="form-label" for="producto-nombre">Nombre del producto</label>
           <input type="text"
                  id="producto-nombre"
                  class="form-input"
                  placeholder="Hamburguesa con queso"
-                 maxlength="80">
+                 maxlength="80"
+                 oninput="productoNombreEditado()">
         </div>
 
         <div class="form-field">
@@ -1196,6 +1211,15 @@
             </label>
           </div>
           <div class="form-hint">Marcá los alérgenos presentes (obligatorio por ley en muchos países).</div>
+        </div>
+
+        <!-- Mirror al catálogo (Paso 2). Solo en ALTA; se oculta al editar. -->
+        <div class="form-field cat-mirror-field" id="producto-cat-mirror-field">
+          <label class="cat-mirror-check">
+            <input type="checkbox" id="producto-cat-mirror" checked>
+            <span>➕ También guardar en el catálogo</span>
+          </label>
+          <div class="form-hint" id="producto-cat-mirror-hint">Se suma a tu base de productos para reusarlo en otras cartas.</div>
         </div>
       </div>
 
@@ -1288,7 +1312,7 @@
   <script src="js/wizard.js?v=30"></script>
   <script src="js/preview.js?v=30"></script>
   <script src="js/firestore-horno.js?v=40"></script>
-  <script src="js/app.js?v=44"></script>
+  <script src="js/app.js?v=45"></script>
 
 </body>
 </html>
