@@ -3399,3 +3399,48 @@ input:focus-visible {
 .cat-mirror-check input { width: 16px; height: 16px; cursor: pointer; }
 .cat-mirror-field.is-locked { opacity: 0.6; }
 .cat-mirror-field.is-locked .cat-mirror-check { cursor: default; }
+
+/* ============================================================ */
+/* Pestaña PRECIOS · modificación masiva                        */
+/* ============================================================ */
+.precios-panel { max-width: 760px; margin: 0 auto; }
+.precios-panel-titulo { font-size: 1.15rem; font-weight: 700; color: #e6edf3; }
+.precios-panel-sub { color: #8b949e; font-size: 0.86rem; margin: 0.2rem 0 1.1rem; }
+.precios-bloque {
+  background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+  padding: 0.9rem 1rem; margin-bottom: 0.8rem;
+}
+.precios-bloque-titulo {
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em;
+  color: #8b949e; text-transform: uppercase; margin-bottom: 0.7rem;
+}
+.precios-radio-row, .precios-op-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.precios-op-grupo { display: flex; flex-direction: column; gap: 0.4rem; }
+.precios-op-label { font-size: 0.72rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.03em; }
+.precios-radio { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #e6edf3; font-size: 0.9rem; }
+.precios-radio input { width: 16px; height: 16px; cursor: pointer; }
+.precios-secciones { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-top: 0.8rem; }
+.precios-seccion-check { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #e6edf3; font-size: 0.88rem; }
+.precios-seccion-check small { color: #8b949e; }
+.precios-valor-wrap { position: relative; display: inline-flex; align-items: center; }
+.precios-valor-input { width: 120px; padding-right: 1.8rem; }
+.precios-valor-unidad { position: absolute; right: 0.6rem; color: #8b949e; font-weight: 700; pointer-events: none; }
+.precios-redondeo-info { color: #e6edf3; font-size: 0.9rem; }
+.precios-preview {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 12px;
+  padding: 0.8rem 1rem; margin-bottom: 0.9rem; max-height: 320px; overflow-y: auto;
+}
+.precios-preview-empty { color: #8b949e; font-size: 0.86rem; padding: 0.4rem 0; }
+.precios-preview-titulo { font-size: 0.82rem; font-weight: 700; color: #8b949e; margin-bottom: 0.6rem; }
+.precios-preview-fila {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 1rem; padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.precios-preview-fila:last-child { border-bottom: none; }
+.precios-preview-nom { color: #e6edf3; font-size: 0.9rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.precios-preview-precios { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.precios-viejo { color: #8b949e; text-decoration: line-through; font-size: 0.85rem; }
+.precios-flecha { color: #8b949e; }
+.precios-nuevo { color: #3fb950; font-weight: 700; font-size: 0.92rem; }
+.precios-preview-fila.is-igual .precios-nuevo { color: #8b949e; font-weight: 500; }
+.precios-footer { display: flex; justify-content: flex-end; }

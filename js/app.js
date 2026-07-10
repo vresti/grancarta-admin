@@ -2922,6 +2922,177 @@ const AdminApp = (function() {
       c.classList.remove('is-active');
     });
     document.getElementById('editor-tab-' + tab).classList.add('is-active');
+    if (tab === 'precios') renderTabPrecios();
+  }
+
+  // ============================================================
+  // PESTAÑA "PRECIOS" — modificación masiva sobre la carta abierta.
+  // Porcentaje o monto fijo, subir/bajar, toda la carta o secciones
+  // elegidas. Respeta el redondeo de la carta. Vista previa obligatoria
+  // + clamp a $0. Escribe con batch y rehornea. No toca GAS.
+  // ============================================================
+  function renderTabPrecios() {
+    const ctx = state.editorContexto;
+    if (!ctx) return;
+
+    // Redondeo de la carta (informativo; se aplica siempre).
+    const modo = ctx.carta.Redondeo || '10';
+    document.getElementById('precios-redondeo-info').textContent = (modo === 'sin')
+      ? 'Sin redondear (conserva centavos).'
+      : 'Múltiplos de $' + modo + '. Se aplica automáticamente al resultado.';
+
+    // Checkboxes de secciones (todas tildadas por defecto).
+    document.getElementById('precios-secciones').innerHTML = ctx.secciones.map(function(s) {
+      const n = (s.productos || []).length;
+      return '<label class="precios-seccion-check">'
+        + '<input type="checkbox" value="' + AdminUI.escapeHtml(s.Id_Seccion) + '" checked onchange="onPreciosCambio()">'
+        + '<span>' + AdminUI.escapeHtml(s.Nombre) + ' <small>(' + n + ')</small></span></label>';
+    }).join('');
+
+    onPreciosCambio();
+  }
+
+  function onPreciosAlcanceCambio() {
+    const alcanceEl = document.querySelector('input[name="precios-alcance"]:checked');
+    const alcance = alcanceEl ? alcanceEl.value : 'carta';
+    document.getElementById('precios-secciones').style.display = (alcance === 'secciones') ? '' : 'none';
+    onPreciosCambio();
+  }
+
+  function onPreciosCambio() {
+    const tipoEl = document.querySelector('input[name="precios-tipo"]:checked');
+    const tipo = tipoEl ? tipoEl.value : 'pct';
+    document.getElementById('precios-valor-unidad').textContent = (tipo === 'pct') ? '%' : '$';
+    renderPreviewPrecios();
+  }
+
+  // Calcula la lista de cambios {idProducto, nombre, precioViejo, precioNuevo}
+  // según el alcance y la operación elegidos. Aplica clamp a $0 y el redondeo
+  // de la carta (misma función que el resto del sistema).
+  function _calcularCambiosPrecios() {
+    const ctx = state.editorContexto;
+    if (!ctx) return [];
+
+    const alcanceEl = document.querySelector('input[name="precios-alcance"]:checked');
+    const alcance = alcanceEl ? alcanceEl.value : 'carta';
+    const tipoEl = document.querySelector('input[name="precios-tipo"]:checked');
+    const tipo = tipoEl ? tipoEl.value : 'pct';
+    const dirEl = document.querySelector('input[name="precios-dir"]:checked');
+    const dir = dirEl ? dirEl.value : 'subir';
+    const valor = parseFloat(document.getElementById('precios-valor').value);
+
+    if (isNaN(valor) || valor <= 0) return [];
+
+    let secciones = ctx.secciones;
+    if (alcance === 'secciones') {
+      const marcadas = {};
+      document.querySelectorAll('#precios-secciones input[type="checkbox"]:checked').forEach(function(cb) {
+        marcadas[cb.value] = true;
+      });
+      secciones = ctx.secciones.filter(function(s) { return marcadas[s.Id_Seccion]; });
+    }
+
+    const signo = (dir === 'bajar') ? -1 : 1;
+    const modo = ctx.carta.Redondeo || '10';
+    const cambios = [];
+
+    secciones.forEach(function(s) {
+      (s.productos || []).forEach(function(p) {
+        const actual = Number(p.Precio) || 0;
+        let nuevo = (tipo === 'pct')
+          ? actual * (1 + signo * valor / 100)
+          : actual + signo * valor;
+        if (nuevo < 0) nuevo = 0;                                  // clamp a $0
+        nuevo = window.GCFirestore.redondearPrecio(nuevo, modo);
+        if (nuevo < 0) nuevo = 0;                                  // por si el redondeo baja de 0
+        cambios.push({
+          idProducto: p.Id_Producto, nombre: p.Nombre,
+          precioViejo: actual, precioNuevo: nuevo
+        });
+      });
+    });
+    return cambios;
+  }
+
+  function renderPreviewPrecios() {
+    const cont = document.getElementById('precios-preview');
+    const btn = document.getElementById('btn-precios-aplicar');
+    const cambios = _calcularCambiosPrecios();
+    state.preciosCambios = cambios;
+
+    if (cambios.length === 0) {
+      cont.innerHTML = '<div class="precios-preview-empty">Elegí una operación y un valor mayor a 0 para ver la vista previa.</div>';
+      btn.disabled = true;
+      btn.textContent = 'Aplicar';
+      return;
+    }
+
+    let filas = '';
+    cambios.forEach(function(c) {
+      const igual = c.precioNuevo === c.precioViejo;
+      filas += '<div class="precios-preview-fila' + (igual ? ' is-igual' : '') + '">'
+        + '<span class="precios-preview-nom">' + AdminUI.escapeHtml(c.nombre) + '</span>'
+        + '<span class="precios-preview-precios">'
+        + '<span class="precios-viejo">' + _catPrecioFmt(c.precioViejo) + '</span>'
+        + '<span class="precios-flecha">→</span>'
+        + '<span class="precios-nuevo">' + _catPrecioFmt(c.precioNuevo) + '</span>'
+        + '</span></div>';
+    });
+    cont.innerHTML =
+      '<div class="precios-preview-titulo">Vista previa (' + cambios.length + ' producto(s) afectado(s))</div>' + filas;
+    btn.disabled = false;
+    btn.textContent = 'Aplicar a ' + cambios.length + ' producto(s)';
+  }
+
+  async function aplicarPrecios() {
+    const ctx = state.editorContexto;
+    const cambios = state.preciosCambios || [];
+    if (!ctx || cambios.length === 0) return;
+
+    const idEmpresa = ctx.idEmpresa || (ctx.carta && ctx.carta.Id_Empresa);
+    const idCarta   = ctx.idCarta   || (ctx.carta && ctx.carta.Id_Carta);
+
+    const ok = await AdminUI.confirm({
+      title: 'Aplicar cambio de precios',
+      message: 'Vas a actualizar ' + cambios.length + ' precio(s) en esta carta. No hay "deshacer" (se revierte aplicando la operación inversa). ¿Confirmás?',
+      okLabel: 'Sí, aplicar',
+      cancelLabel: 'Cancelar'
+    });
+    if (!ok) return;
+
+    const btn = document.getElementById('btn-precios-aplicar');
+    btn.disabled = true;
+    btn.textContent = 'Aplicando…';
+
+    try {
+      if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
+      if (!idEmpresa || !idCarta) throw new Error('faltan idEmpresa/idCarta');
+
+      await window.GCFirestore.actualizarPreciosMasivo(idEmpresa, idCarta,
+        cambios.map(function(c) { return { idProducto: c.idProducto, precio: c.precioNuevo }; }));
+
+      // Reflejar en memoria (Contenido y la preview quedan al día sin recargar).
+      const nuevoPorId = {};
+      cambios.forEach(function(c) { nuevoPorId[c.idProducto] = c.precioNuevo; });
+      ctx.secciones.forEach(function(s) {
+        (s.productos || []).forEach(function(p) {
+          if (Object.prototype.hasOwnProperty.call(nuevoPorId, p.Id_Producto)) p.Precio = nuevoPorId[p.Id_Producto];
+        });
+      });
+
+      AdminUI.toast(cambios.length + ' precio(s) actualizado(s)', 'success');
+      renderEditor();                                       // refresca el tab Contenido
+      document.getElementById('precios-valor').value = '';  // limpiar → preview vacía
+      renderPreviewPrecios();
+
+      // Rehornear (el comensal ve los precios nuevos).
+      await rehornearLocalesDeLaCarta(idEmpresa, idCarta);
+    } catch (e) {
+      console.error('[FS] no se pudo aplicar el cambio de precios:', e && e.message);
+      AdminUI.toast('No pudimos aplicar los cambios. Reintentá.', 'error');
+      btn.disabled = false;
+      renderPreviewPrecios();
+    }
   }
 
   function volverACartas() {
@@ -4669,6 +4840,9 @@ const AdminApp = (function() {
     abrirEditorCarta,
     volverACartas,
     cambiarTabEditor,
+    onPreciosAlcanceCambio,
+    onPreciosCambio,
+    aplicarPrecios,
     abrirModalSeccionNueva,
     abrirModalSeccionEditar,
     confirmarSeccion,
@@ -4787,6 +4961,9 @@ function cerrarModales() { AdminApp.cerrarModales(); }
 // Editor de carta (secciones y productos)
 function volverACartas() { AdminApp.volverACartas(); }
 function cambiarTabEditor(tab) { AdminApp.cambiarTabEditor(tab); }
+function onPreciosAlcanceCambio() { AdminApp.onPreciosAlcanceCambio(); }
+function onPreciosCambio() { AdminApp.onPreciosCambio(); }
+function aplicarPrecios() { AdminApp.aplicarPrecios(); }
 function abrirModalSeccionNueva() { AdminApp.abrirModalSeccionNueva(); }
 function abrirModalSeccionEditar(id) { AdminApp.abrirModalSeccionEditar(id); }
 function confirmarSeccion() { AdminApp.confirmarSeccion(); }

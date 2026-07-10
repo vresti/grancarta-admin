@@ -1571,6 +1571,25 @@
       .delete();
   }
 
+  // ---------------------------------------------------------------------------
+  // PRECIOS EN MASA (pestaña "Precios" del editor). Actualiza el precio de VARIOS
+  // productos de una carta en una sola pasada atómica (batch). cambios =
+  // [{ idProducto, precio }]. Ruta: empresas/{emp}/cartas/{carta}/productos/{prod}.
+  // Firestore limita a 500 ops por batch → troceamos por las dudas.
+  // ---------------------------------------------------------------------------
+  async function actualizarPreciosMasivo(idEmpresa, idCarta, cambios) {
+    const D = db();
+    const base = D.collection('empresas').doc(idEmpresa)
+      .collection('cartas').doc(idCarta).collection('productos');
+    for (let i = 0; i < cambios.length; i += 450) {
+      const batch = D.batch();
+      cambios.slice(i, i + 450).forEach(function (c) {
+        batch.update(base.doc(c.idProducto), { precio: c.precio });
+      });
+      await batch.commit();
+    }
+  }
+
   // Exponer el módulo
   window.GCFirestore = {
     colaboradorListar: colaboradorListar,
@@ -1578,6 +1597,8 @@
     catalogoCrear: catalogoCrear,
     catalogoActualizar: catalogoActualizar,
     catalogoEliminar: catalogoEliminar,
+    redondearPrecio: _redondearPrecio,
+    actualizarPreciosMasivo: actualizarPreciosMasivo,
     generarId: generarId,
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,

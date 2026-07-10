@@ -1026,13 +1026,80 @@
 
       </div>
 
-      <!-- TAB: PRECIOS (próxima sesión) -->
+      <!-- TAB: PRECIOS (modificación masiva) -->
       <div id="editor-tab-precios" class="editor-tab-content">
-        <div class="placeholder-tab">
-          <div class="placeholder-icon">💰</div>
-          <div class="placeholder-title">Modificación masiva de precios</div>
-          <div class="placeholder-text">
-            En la próxima sesión vas a poder subir/bajar precios por sección o producto.
+        <div class="precios-panel">
+          <div class="precios-panel-titulo">💰 Modificar precios en masa</div>
+          <div class="precios-panel-sub">Aplica una operación matemática a los precios de esta carta y respeta su redondeo.</div>
+
+          <!-- 1 · Alcance -->
+          <div class="precios-bloque">
+            <div class="precios-bloque-titulo">1 · Alcance</div>
+            <div class="precios-radio-row">
+              <label class="precios-radio">
+                <input type="radio" name="precios-alcance" value="carta" checked onchange="onPreciosAlcanceCambio()">
+                <span>Toda la carta</span>
+              </label>
+              <label class="precios-radio">
+                <input type="radio" name="precios-alcance" value="secciones" onchange="onPreciosAlcanceCambio()">
+                <span>Secciones elegidas</span>
+              </label>
+            </div>
+            <div class="precios-secciones" id="precios-secciones" style="display:none;">
+              <!-- checkboxes generados por JS -->
+            </div>
+          </div>
+
+          <!-- 2 · Operación -->
+          <div class="precios-bloque">
+            <div class="precios-bloque-titulo">2 · Operación</div>
+            <div class="precios-op-row">
+              <div class="precios-op-grupo">
+                <span class="precios-op-label">Tipo</span>
+                <label class="precios-radio">
+                  <input type="radio" name="precios-tipo" value="pct" checked onchange="onPreciosCambio()">
+                  <span>Porcentaje %</span>
+                </label>
+                <label class="precios-radio">
+                  <input type="radio" name="precios-tipo" value="monto" onchange="onPreciosCambio()">
+                  <span>Monto fijo $</span>
+                </label>
+              </div>
+              <div class="precios-op-grupo">
+                <span class="precios-op-label">Dirección</span>
+                <label class="precios-radio">
+                  <input type="radio" name="precios-dir" value="subir" checked onchange="onPreciosCambio()">
+                  <span>▲ Subir</span>
+                </label>
+                <label class="precios-radio">
+                  <input type="radio" name="precios-dir" value="bajar" onchange="onPreciosCambio()">
+                  <span>▼ Bajar</span>
+                </label>
+              </div>
+              <div class="precios-op-grupo">
+                <span class="precios-op-label">Valor</span>
+                <div class="precios-valor-wrap">
+                  <input type="number" id="precios-valor" class="form-input precios-valor-input"
+                         min="0" step="0.01" placeholder="10" oninput="onPreciosCambio()">
+                  <span class="precios-valor-unidad" id="precios-valor-unidad">%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3 · Redondeo -->
+          <div class="precios-bloque">
+            <div class="precios-bloque-titulo">3 · Redondeo de esta carta</div>
+            <div class="precios-redondeo-info" id="precios-redondeo-info">—</div>
+          </div>
+
+          <!-- Vista previa -->
+          <div class="precios-preview" id="precios-preview">
+            <!-- generado por JS -->
+          </div>
+
+          <div class="precios-footer">
+            <button class="btn btn-primary" id="btn-precios-aplicar" onclick="aplicarPrecios()" disabled>Aplicar</button>
           </div>
         </div>
       </div>
@@ -1311,8 +1378,8 @@
   <script src="js/ui.js?v=30"></script>
   <script src="js/wizard.js?v=30"></script>
   <script src="js/preview.js?v=30"></script>
-  <script src="js/firestore-horno.js?v=40"></script>
-  <script src="js/app.js?v=46"></script>
+  <script src="js/firestore-horno.js?v=41"></script>
+  <script src="js/app.js?v=47"></script>
 
 </body>
 </html>
