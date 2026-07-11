@@ -1330,18 +1330,6 @@
     return { id_local: idLocal, cambios: updates };
   }
 
-  // Campos FS-administrados del local, para que el dashboard los lea de FS (no de
-  // GAS): { idLocal: { whatsapp, mensaje_whatsapp_default } }.
-  async function leerLocalesFsCampos(idEmpresa) {
-    const snap = await db().collection('empresas').doc(idEmpresa).collection('locales').get();
-    const out = {};
-    snap.docs.forEach(function (d) {
-      const l = d.data();
-      out[d.id] = { whatsapp: l.whatsapp || '', mensaje_whatsapp_default: l.mensaje_whatsapp_default || '' };
-    });
-    return out;
-  }
-
   // Arma el dashboard COMPLETO desde Firestore, scopeado a la empresa activa
   // (la del token). Devuelve el mismo shape que hoy arma el front desde GAS, para
   // reemplazar dashboard_completo (la lectura viva de la planilla). Etapa 2.
@@ -1415,49 +1403,6 @@
     }
 
     return { empresa: empresa, locales: locales, publicaciones: publicaciones, es_admin: esAdmin };
-  }
-
-  // Lee de FS el doc de la empresa + TODOS sus locales, con los campos que el
-  // dashboard del admin necesita, mapeados a los nombres del dashboard
-  // (PascalCase). El front usa esto para leer empresa/local de Firestore en vez
-  // de la planilla (dashboard_completo de GAS queda de red). Etapa 2, paso 3.
-  //   Devuelve: { empresa: {...} | null, locales: { [idLocal]: {...} } }
-  // Solo se incluyen campos presentes en FS; lo que no exista queda undefined y
-  // el front NO lo pisa (deja el valor que vino de GAS).
-  async function leerEmpresaYLocalesFs(idEmpresa) {
-    const empRef = db().collection('empresas').doc(idEmpresa);
-    const empSnap = await empRef.get();
-    let empresa = null;
-    if (empSnap.exists) {
-      const e = empSnap.data();
-      empresa = {
-        Razon_Social: e.razon_social,
-        Nombre_Comercial: e.nombre_comercial,
-        CUIT: e.cuit,
-        Pais: e.pais,
-        Logo_Url: e.logo_url,
-        Mail_Contacto: e.mail_contacto
-      };
-    }
-
-    const locSnap = await empRef.collection('locales').get();
-    const locales = {};
-    locSnap.docs.forEach(function (d) {
-      const l = d.data();
-      locales[d.id] = {
-        Nombre: l.nombre,
-        Direccion: l.direccion,
-        Ciudad: l.ciudad,
-        Capacidad_Mesas: l.capacidad_mesas,
-        Id_Carta_Activa: l.id_carta_activa,
-        Modo_Carta: l.modo_carta,
-        Slug: l.slug,
-        WhatsApp: l.whatsapp,
-        Mensaje_WhatsApp_Default: l.mensaje_whatsapp_default
-      };
-    });
-
-    return { empresa: empresa, locales: locales };
   }
 
   // Colaboradores de una empresa (pantalla "Equipo"), 100% Firestore (v1.6).
@@ -1633,8 +1578,6 @@
     crearPublicacion: crearPublicacion,
     despublicarPublicacion: despublicarPublicacion,
     actualizarLocal: actualizarLocal,
-    leerLocalesFsCampos: leerLocalesFsCampos,
-    leerEmpresaYLocalesFs: leerEmpresaYLocalesFs,
     armarDashboardFS: armarDashboardFS,
     hornearLocal: hornearLocal,
     hornearLocalesDeCarta: hornearLocalesDeCarta

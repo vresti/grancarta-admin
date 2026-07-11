@@ -1428,17 +1428,6 @@ const AdminApp = (function() {
     document.head.appendChild(script);
   }
 
-  function cargarMultiplesScripts(urls, callback) {
-    if (urls.length === 0) return callback();
-    let cargados = 0;
-    urls.forEach(function(url) {
-      cargarScriptCDN(url, function() {
-        cargados++;
-        if (cargados === urls.length) callback();
-      });
-    });
-  }
-
 
   // ============================================================
   // CARTAS DEL LOCAL
