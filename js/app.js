@@ -403,6 +403,8 @@ const AdminApp = (function() {
 
       const btnSis = document.getElementById('btn-panel-sistema');
       if (btnSis) btnSis.style.display = state.esAdmin ? 'inline-flex' : 'none';
+      const btnFab = document.getElementById('btn-fabrica');
+      if (btnFab) btnFab.style.display = state.esAdmin ? 'inline-flex' : 'none';
 
       AdminUI.setLoading(false);
       renderDashboard();
@@ -4615,6 +4617,319 @@ const AdminApp = (function() {
   }
 
   // ============================================================
+  // FÁBRICA DE PIELES (Nivel 0 — curador del catálogo de temas)
+  // ------------------------------------------------------------
+  // Crea/edita pieles (temas de carta) como DATO en Firestore `pieles`.
+  // Modelo: clonar una BASE probada y pisar SOLO las perillas que mueven el
+  // motor de verdad (verificado empíricamente 13/7): 7 colores + tipografía +
+  // mayúsculas + divisor. Lo decorativo (marco, textura, densidad) VIAJA desde
+  // la base — no se expone perilla hasta cablearlo al motor. Guardar → FS
+  // (regla v1.8: solo es_admin_sistema escribe). Preview en vivo con el motor.
+  // ============================================================
+
+  // Tipografías curadas: pares (títulos + cuerpo) ya probados en las 11 pieles.
+  const FAB_FUENTES = [
+    { id: 'cormorant_inter', nombre: 'Cormorant + Inter (elegante)',
+      import: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap",
+      titulos: "'Cormorant Garamond', serif", cuerpo: "'Inter', sans-serif" },
+    { id: 'playfair_lora', nombre: 'Playfair + Lora (clásico serif)',
+      import: "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Lora:wght@400;500;600&display=swap",
+      titulos: "'Playfair Display', serif", cuerpo: "'Lora', serif" },
+    { id: 'cormorant_infant_inter', nombre: 'Cormorant Infant + Inter (premium)',
+      import: "https://fonts.googleapis.com/css2?family=Cormorant+Infant:wght@300;500;600&family=Inter:wght@300;400;500;600&display=swap",
+      titulos: "'Cormorant Infant', serif", cuerpo: "'Inter', sans-serif" },
+    { id: 'bitter_nunito', nombre: 'Bitter + Nunito Sans (cálido)',
+      import: 'https://fonts.googleapis.com/css2?family=Bitter:wght@400;500;600;700&family=Nunito+Sans:wght@300;400;600;700&display=swap',
+      titulos: "'Bitter', serif", cuerpo: "'Nunito Sans', sans-serif" },
+    { id: 'montserrat_inter', nombre: 'Montserrat + Inter (moderno)',
+      import: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Montserrat', sans-serif", cuerpo: "'Inter', sans-serif" },
+    { id: 'oswald_inter', nombre: 'Oswald + Inter (robusto)',
+      import: 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Oswald', sans-serif", cuerpo: "'Inter', sans-serif" },
+    { id: 'staatliches_inter', nombre: 'Staatliches + Inter (condensado)',
+      import: 'https://fonts.googleapis.com/css2?family=Staatliches&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Staatliches', sans-serif", cuerpo: "'Inter', sans-serif" },
+    { id: 'bebas_nunito', nombre: 'Bebas Neue + Nunito Sans (impacto)',
+      import: 'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito+Sans:wght@300;400;600;700&display=swap',
+      titulos: "'Bebas Neue', sans-serif", cuerpo: "'Nunito Sans', sans-serif" },
+    { id: 'josefin_inter', nombre: 'Josefin Sans + Inter (limpio)',
+      import: 'https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Josefin Sans', sans-serif", cuerpo: "'Inter', sans-serif" }
+  ];
+
+  // Las 7 perillas de color: etiqueta + campo(s) del objeto piel que pisan.
+  const FAB_COLORES = [
+    { key: 'fondo',         label: 'Fondo',            campos: ['fondo'] },
+    { key: 'texto',         label: 'Texto',            campos: ['texto', 'nombre'] },
+    { key: 'tituloEmpresa', label: 'Título empresa',   campos: ['tituloEmpresa'] },
+    { key: 'tituloSeccion', label: 'Título sección',   campos: ['tituloSeccion'] },
+    { key: 'acento',        label: 'Acento',           campos: ['acento'] },
+    { key: 'precio',        label: 'Precio',           campos: ['precio'] },
+    { key: 'apagado',       label: 'Apagado (tenues)', campos: ['local', 'seccionDesc', 'productoDesc', 'tag', 'footer', 'notas', 'empty'] }
+  ];
+
+  // Carta de MUESTRA para el preview (fija; solo para ver la piel).
+  const FAB_MUESTRA = {
+    nombreEmpresa: 'La Muestra',
+    nombreLocal: 'Sucursal Centro',
+    carta: {
+      Nombre: 'Carta de muestra', Redondeo: '10',
+      Pie_Direccion: 'Av. Siempreviva 742', Pie_Telefono: '11 5555 1234',
+      Pie_Mail: 'hola@lamuestra.com', Notas: 'Cocina abierta hasta las 00 hs · WiFi: lamuestra'
+    },
+    secciones: [
+      { Nombre: 'Entradas', Descripcion: 'Para empezar', productos: [
+        { Nombre: 'Provoleta a la parrilla', Precio: 4200, Descripcion: 'Con orégano y aceite de oliva', Disponible_Hoy: true, Etiquetas: { vegetariano: true } },
+        { Nombre: 'Rabas', Precio: 6800, Descripcion: 'Con alioli casero', Disponible_Hoy: true, Etiquetas: {} }
+      ]},
+      { Nombre: 'Principales', Descripcion: '', productos: [
+        { Nombre: 'Bife de chorizo', Precio: 12500, Descripcion: 'Con guarnición a elección', Disponible_Hoy: true, Etiquetas: {} },
+        { Nombre: 'Risotto de hongos', Precio: 9800, Descripcion: 'Parmesano y trufa', Disponible_Hoy: true, Etiquetas: { vegetariano: true, sin_tacc: true } },
+        { Nombre: 'Milanesa napolitana', Precio: 10200, Descripcion: '', Disponible_Hoy: true, Etiquetas: {} }
+      ]}
+    ]
+  };
+
+  var _fabLista = [];               // catálogo de pieles leído de FS
+  var _fabWork = null;              // piel en edición (objeto completo)
+  var _fabId = null;                // id de la piel en edición (null si nueva)
+  var _fabEsNueva = false;
+
+  function _fabClonar(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+  async function abrirFabrica() {
+    if (!state.esAdmin) { AdminUI.toast('Solo para administradores del sistema', 'error'); return; }
+    AdminUI.mostrarPantalla('screen-fabrica');
+    _fabWork = null; _fabId = null; _fabEsNueva = false;
+    document.getElementById('fab-editor-vacio').style.display = '';
+    document.getElementById('fab-editor-panel').style.display = 'none';
+    await recargarFabLista();
+  }
+
+  async function recargarFabLista() {
+    const cont = document.getElementById('fab-lista');
+    cont.innerHTML = '<div class="fab-lista-loading">Cargando pieles…</div>';
+    try {
+      _fabLista = await window.GCFirestore.leerPieles();
+      // mantené el motor del editor sincronizado con lo que hay en FS
+      if (typeof GranCartaPieles !== 'undefined') GranCartaPieles.hidratar(_fabLista);
+    } catch (e) {
+      console.warn('[Fábrica] no se pudo leer pieles de FS:', e && e.message);
+      _fabLista = GranCartaPieles.listar().map(function (t) { return GranCartaPieles.PRESETS[t.id]; });
+    }
+    renderFabLista();
+  }
+
+  function renderFabLista() {
+    const cont = document.getElementById('fab-lista');
+    let html = '';
+    _fabLista.forEach(function (p) {
+      const sel = (_fabId === p.id) ? ' is-selected' : '';
+      const badge = (p.tipo === 'personalizada') ? '<span class="fab-badge fab-badge-custom">custom</span>'
+                  : (p.premium ? '<span class="fab-badge fab-badge-premium">premium</span>' : '');
+      html += '<button type="button" class="fab-item' + sel + '" onclick="fabricaEditar(\'' + p.id + '\')">'
+            + '<span class="fab-item-swatch" style="background:' + AdminUI.escapeHtml(p.color && p.color.fondo || '#fff')
+            + ';border-color:' + AdminUI.escapeHtml(p.color && p.color.acento || '#ccc') + '">'
+            + '<i style="background:' + AdminUI.escapeHtml(p.color && p.color.acento || '#ccc') + '"></i></span>'
+            + '<span class="fab-item-txt"><span class="fab-item-nombre">' + AdminUI.escapeHtml(p.nombre || p.id) + '</span>'
+            + '<span class="fab-item-rubro">' + AdminUI.escapeHtml(p.rubro || '—') + '</span></span>'
+            + badge + '</button>';
+    });
+    cont.innerHTML = html || '<div class="fab-lista-loading">Sin pieles.</div>';
+  }
+
+  function fabricaNueva() {
+    if (!state.esAdmin) return;
+    _fabWork = _fabClonar(GranCartaPieles.PRESETS.minimalista);
+    _fabWork.nombre = ''; _fabWork.descripcion = ''; _fabWork.rubro = '';
+    _fabWork.premium = false; _fabWork.tipo = 'generica'; _fabWork.id_empresa = null;
+    delete _fabWork.orden;
+    _fabId = null; _fabEsNueva = true;
+    renderFabLista();
+    renderFabEditor();
+  }
+
+  function fabricaEditar(id) {
+    const p = _fabLista.find(function (x) { return x.id === id; }) || GranCartaPieles.PRESETS[id];
+    if (!p) { AdminUI.toast('No encontré esa piel', 'error'); return; }
+    _fabWork = _fabClonar(p);
+    _fabId = id; _fabEsNueva = false;
+    renderFabLista();
+    renderFabEditor();
+  }
+
+  // Detecta cuál par de fuentes está activo en la piel (para el select).
+  function _fabFuenteActual(p) {
+    const f = p.fuente || {};
+    const m = FAB_FUENTES.find(function (x) { return x.titulos === f.titulos && x.cuerpo === f.cuerpo; });
+    return m ? m.id : '';
+  }
+
+  function renderFabEditor() {
+    document.getElementById('fab-editor-vacio').style.display = 'none';
+    document.getElementById('fab-editor-panel').style.display = '';
+    const p = _fabWork;
+
+    // Controles (columna izquierda del panel)
+    let baseHtml = '';
+    if (_fabEsNueva) {
+      baseHtml = '<div class="fab-campo"><label class="fab-label">Partir de (base)</label>'
+        + '<select class="login-input fab-select" onchange="fabricaCambiarBase(this.value)">'
+        + GranCartaPieles.listar().map(function (t) {
+            return '<option value="' + t.id + '"' + (t.id === (_fabWork._baseId || 'minimalista') ? ' selected' : '') + '>' + AdminUI.escapeHtml(t.nombre) + '</option>';
+          }).join('')
+        + '</select><div class="fab-hint">Lo que no editás (marco, textura, densidad) se hereda de la base.</div></div>';
+    }
+
+    const coloresHtml = FAB_COLORES.map(function (c) {
+      const val = (p.color && p.color[c.campos[0]]) || '#000000';
+      return '<div class="fab-color-row"><label class="fab-label">' + c.label + '</label>'
+        + '<div class="fab-color-ctl"><input type="color" value="' + _fabHex(val) + '" oninput="fabricaSetColor(\'' + c.key + '\', this.value)">'
+        + '<input type="text" class="fab-color-hex" value="' + AdminUI.escapeHtml(val) + '" onchange="fabricaSetColor(\'' + c.key + '\', this.value)"></div></div>';
+    }).join('');
+
+    const fuenteHtml = '<div class="fab-campo"><label class="fab-label">Tipografía</label>'
+      + '<select class="login-input fab-select" onchange="fabricaSetFuente(this.value)">'
+      + (_fabFuenteActual(p) ? '' : '<option value="" selected>(actual — sin cambios)</option>')
+      + FAB_FUENTES.map(function (f) {
+          return '<option value="' + f.id + '"' + (f.id === _fabFuenteActual(p) ? ' selected' : '') + '>' + AdminUI.escapeHtml(f.nombre) + '</option>';
+        }).join('')
+      + '</select></div>';
+
+    const gestosHtml = '<div class="fab-campo"><label class="fab-label">Mayúsculas en títulos</label>'
+      + '<label class="fab-switch"><input type="checkbox"' + (p.mayusculas ? ' checked' : '') + ' onchange="fabricaSetBool(\'mayusculas\', this.checked)"><span></span></label></div>'
+      + '<div class="fab-campo"><label class="fab-label">Divisor</label>'
+      + '<select class="login-input fab-select" onchange="fabricaSetDivisor(this.value)">'
+      + ['linea', 'rombos'].map(function (d) {
+          return '<option value="' + d + '"' + (d === (p.divisor || 'linea') ? ' selected' : '') + '>' + (d === 'linea' ? 'Línea simple' : 'Rombos ◆') + '</option>';
+        }).join('')
+      + '</select></div>';
+
+    const metaHtml = '<div class="fab-campo"><label class="fab-label">Nombre</label>'
+      + '<input type="text" class="login-input" id="fab-nombre" value="' + AdminUI.escapeHtml(p.nombre || '') + '" oninput="fabricaSetMeta(\'nombre\', this.value)" placeholder="Ej: Bistró Verde"></div>'
+      + '<div class="fab-campo"><label class="fab-label">Descripción</label>'
+      + '<input type="text" class="login-input" value="' + AdminUI.escapeHtml(p.descripcion || '') + '" oninput="fabricaSetMeta(\'descripcion\', this.value)" placeholder="Para qué rubro / qué transmite"></div>'
+      + '<div class="fab-campo"><label class="fab-label">Rubro</label>'
+      + '<input type="text" class="login-input" value="' + AdminUI.escapeHtml(p.rubro || '') + '" oninput="fabricaSetMeta(\'rubro\', this.value)" placeholder="Ej: bistro"></div>'
+      + '<div class="fab-campo"><label class="fab-label">Premium</label>'
+      + '<label class="fab-switch"><input type="checkbox"' + (p.premium ? ' checked' : '') + ' onchange="fabricaSetBool(\'premium\', this.checked)"><span></span></label></div>';
+
+    const titulo = _fabEsNueva ? 'Nueva piel' : ('Editando: ' + AdminUI.escapeHtml(p.nombre || _fabId));
+    const btnGuardar = _fabEsNueva ? 'Crear piel' : 'Guardar cambios';
+
+    document.getElementById('fab-controles').innerHTML =
+        '<div class="fab-editor-titulo">' + titulo + '</div>'
+      + '<div class="fab-grupo"><div class="fab-grupo-h">Identidad</div>' + metaHtml + '</div>'
+      + baseHtml
+      + '<div class="fab-grupo"><div class="fab-grupo-h">Colores</div>' + coloresHtml + '</div>'
+      + '<div class="fab-grupo"><div class="fab-grupo-h">Tipografía y gestos</div>' + fuenteHtml + gestosHtml + '</div>'
+      + '<div class="fab-acciones"><button class="btn btn-secondary" onclick="fabricaCancelar()">Cancelar</button>'
+      + '<button class="btn btn-primary" id="fab-btn-guardar" onclick="fabricaGuardar()">' + btnGuardar + '</button></div>';
+
+    renderFabPreview();
+  }
+
+  function _fabHex(v) {
+    // <input type=color> exige #rrggbb. Si el valor no es hex simple, cae a negro.
+    return /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : '#000000';
+  }
+
+  function fabricaCambiarBase(baseId) {
+    const base = GranCartaPieles.PRESETS[baseId];
+    if (!base) return;
+    const meta = { nombre: _fabWork.nombre, descripcion: _fabWork.descripcion, rubro: _fabWork.rubro, premium: _fabWork.premium };
+    _fabWork = _fabClonar(base);
+    _fabWork._baseId = baseId;
+    _fabWork.nombre = meta.nombre; _fabWork.descripcion = meta.descripcion;
+    _fabWork.rubro = meta.rubro; _fabWork.premium = meta.premium;
+    _fabWork.tipo = 'generica'; _fabWork.id_empresa = null; delete _fabWork.orden;
+    renderFabEditor();
+  }
+
+  function fabricaSetColor(key, valor) {
+    const c = FAB_COLORES.find(function (x) { return x.key === key; });
+    if (!c || !_fabWork.color) return;
+    c.campos.forEach(function (campo) { _fabWork.color[campo] = valor; });
+    renderFabPreview();
+  }
+
+  function fabricaSetFuente(fid) {
+    const f = FAB_FUENTES.find(function (x) { return x.id === fid; });
+    if (!f) return;
+    _fabWork.fuente = { import: f.import, titulos: f.titulos, cuerpo: f.cuerpo };
+    renderFabPreview();
+  }
+
+  function fabricaSetBool(campo, val) { _fabWork[campo] = !!val; renderFabPreview(); }
+  function fabricaSetDivisor(val) {
+    _fabWork.divisor = val;
+    // El motor solo dibuja rombos si divisorTok.rombo existe (algunas bases no lo
+    // traen). Al elegir rombos, lo inyectamos para que la perilla funcione siempre.
+    if (val === 'rombos') {
+      if (!_fabWork.divisorTok) _fabWork.divisorTok = { ancho: '80px', alto: '2px', margin: '1.5rem auto', opacity: '1' };
+      if (!_fabWork.divisorTok.rombo) _fabWork.divisorTok.rombo = '◆';
+    }
+    renderFabPreview();
+  }
+  function fabricaSetMeta(campo, val) { _fabWork[campo] = val; }
+
+  function renderFabPreview() {
+    const html = CartaRenderer.renderizar({
+      carta: FAB_MUESTRA.carta,
+      secciones: FAB_MUESTRA.secciones,
+      nombreEmpresa: FAB_MUESTRA.nombreEmpresa,
+      nombreLocal: FAB_MUESTRA.nombreLocal,
+      pielObj: _fabWork
+    });
+    document.getElementById('fab-preview-iframe').srcdoc = html;
+  }
+
+  function fabricaCancelar() {
+    _fabWork = null; _fabId = null; _fabEsNueva = false;
+    document.getElementById('fab-editor-vacio').style.display = '';
+    document.getElementById('fab-editor-panel').style.display = 'none';
+    renderFabLista();
+  }
+
+  async function fabricaGuardar() {
+    if (!_fabWork) return;
+    const nombre = String(_fabWork.nombre || '').trim();
+    if (nombre.length < 2) { AdminUI.toast('Poné un nombre a la piel', 'error'); return; }
+    _fabWork.nombre = nombre;
+
+    const btn = document.getElementById('fab-btn-guardar');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    try {
+      let id = _fabId;
+      if (_fabEsNueva) {
+        id = await window.GCFirestore.generarId('SKN');   // SKN-XXXX
+        _fabWork.id = id;
+        if (typeof _fabWork.orden !== 'number') {
+          const maxOrden = _fabLista.reduce(function (m, x) { return Math.max(m, x.orden || 0); }, 0);
+          _fabWork.orden = maxOrden + 1;
+        }
+        if (!_fabWork.tipo) _fabWork.tipo = 'generica';
+        if (_fabWork.id_empresa === undefined) _fabWork.id_empresa = null;
+      } else {
+        _fabWork.id = id;
+      }
+      delete _fabWork._baseId;   // metadato de UI, no va a FS
+      await window.GCFirestore.guardarPiel(id, _fabWork);
+      AdminUI.toast(_fabEsNueva ? 'Piel creada' : 'Piel guardada', 'success');
+      _fabId = id; _fabEsNueva = false;
+      await recargarFabLista();
+      // reabrí la piel recién guardada
+      fabricaEditar(id);
+    } catch (e) {
+      console.error('[Fábrica] no se pudo guardar:', e && e.message);
+      AdminUI.toast('No se pudo guardar la piel: ' + (e && e.message ? e.message : 'error'), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = _fabEsNueva ? 'Crear piel' : 'Guardar cambios'; }
+    }
+  }
+
+  // ============================================================
   // CATÁLOGO DE PRODUCTOS (por empresa) — ABM sobre la base
   // maestra empresas/{emp}/catalogo. Es la fuente de productos
   // para armar cartas rápido (Paso 2 la enganchará al editor).
@@ -4895,6 +5210,18 @@ const AdminApp = (function() {
     abrirModalAgregarAdmin,
     cerrarModalAdmin,
     guardarAdmin,
+    // Fábrica de Pieles (Nivel 0)
+    abrirFabrica,
+    fabricaNueva,
+    fabricaEditar,
+    fabricaCambiarBase,
+    fabricaSetColor,
+    fabricaSetFuente,
+    fabricaSetBool,
+    fabricaSetDivisor,
+    fabricaSetMeta,
+    fabricaCancelar,
+    fabricaGuardar,
     // Sectores y Mesas (16/6)
     abrirSectoresMesas,
     volverDeSectores,
@@ -5029,6 +5356,21 @@ function ejecutarIntegridad() { AdminApp.ejecutarIntegridad(); }
 function abrirModalAgregarAdmin() { AdminApp.abrirModalAgregarAdmin(); }
 function cerrarModalAdmin() { AdminApp.cerrarModalAdmin(); }
 function guardarAdmin() { AdminApp.guardarAdmin(); }
+
+// ============================================================
+// FUNCIONES GLOBALES — FÁBRICA DE PIELES
+// ============================================================
+function abrirFabrica() { AdminApp.abrirFabrica(); }
+function fabricaNueva() { AdminApp.fabricaNueva(); }
+function fabricaEditar(id) { AdminApp.fabricaEditar(id); }
+function fabricaCambiarBase(id) { AdminApp.fabricaCambiarBase(id); }
+function fabricaSetColor(k, v) { AdminApp.fabricaSetColor(k, v); }
+function fabricaSetFuente(v) { AdminApp.fabricaSetFuente(v); }
+function fabricaSetBool(c, v) { AdminApp.fabricaSetBool(c, v); }
+function fabricaSetDivisor(v) { AdminApp.fabricaSetDivisor(v); }
+function fabricaSetMeta(c, v) { AdminApp.fabricaSetMeta(c, v); }
+function fabricaCancelar() { AdminApp.fabricaCancelar(); }
+function fabricaGuardar() { AdminApp.fabricaGuardar(); }
 
 // Sectores y Mesas (16/6)
 function abrirSectoresMesas(idLocal, audienceSlug, nombreCanal, nombreLocal, nombreEmpresa, idPublicacion) {

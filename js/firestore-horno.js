@@ -1542,6 +1542,19 @@
       .sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
   }
 
+  // Guarda (crea o pisa) una piel en `pieles/{id}` desde la Fábrica (Nivel 0).
+  // Escritura gobernada por la regla v1.8 (`write: if esAdminSistema()`): solo un
+  // usuario con usuarios/{uid}.es_admin_sistema == true la puede correr; a cualquier
+  // otro Firestore le devuelve permission-denied y el caller lo muestra. `id` nuevo
+  // = SKN-XXXX (generarId('SKN')); editar una existente pisa su doc entero.
+  async function guardarPiel(id, piel) {
+    if (!id) throw new Error('falta el id de la piel');
+    if (!piel || !piel.color || !piel.fuente) throw new Error('la piel está incompleta');
+    const doc = Object.assign({}, piel, { id: id });   // el objeto completo (perillas + tokens + metadatos)
+    await db().collection('pieles').doc(id).set(doc);
+    return id;
+  }
+
   // ---------------------------------------------------------------------------
   // PRECIOS EN MASA (pestaña "Precios" del editor). Actualiza el precio de VARIOS
   // productos de una carta en una sola pasada atómica (batch). cambios =
@@ -1571,6 +1584,7 @@
     redondearPrecio: _redondearPrecio,
     actualizarPreciosMasivo: actualizarPreciosMasivo,
     leerPieles: leerPieles,
+    guardarPiel: guardarPiel,
     generarId: generarId,
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,

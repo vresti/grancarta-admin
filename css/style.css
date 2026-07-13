@@ -3550,3 +3550,78 @@ input:focus-visible {
 .precios-nuevo { color: #3fb950; font-weight: 700; font-size: 0.92rem; }
 .precios-preview-fila.is-igual .precios-nuevo { color: #8b949e; font-weight: 500; }
 .precios-footer { display: flex; justify-content: flex-end; }
+
+/* ============================================================ */
+/* FÁBRICA DE PIELES (Nivel 0)                                  */
+/* ============================================================ */
+.fab-main { padding-top: 1rem; }
+.fab-layout { display: grid; grid-template-columns: 300px 1fr; gap: 1.25rem; align-items: start; }
+
+/* Lista de pieles */
+.fab-lista { display: flex; flex-direction: column; gap: 0.5rem; }
+.fab-lista-loading { color: var(--text-muted); font-size: 0.9rem; padding: 1rem; }
+.fab-item {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%;
+  padding: 0.65rem 0.75rem; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--r-md); cursor: pointer; text-align: left; transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.fab-item:hover { background: var(--bg-card-hover); }
+.fab-item.is-selected { border-color: var(--primary); background: var(--primary-soft); }
+.fab-item-swatch {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px; border: 2px solid;
+  display: flex; align-items: center; justify-content: center;
+}
+.fab-item-swatch i { width: 12px; height: 12px; border-radius: 3px; display: block; }
+.fab-item-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.fab-item-nombre { color: var(--text); font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fab-item-rubro { color: var(--text-muted); font-size: 0.75rem; }
+.fab-badge { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 5px; font-weight: 700; }
+.fab-badge-premium { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+.fab-badge-custom { background: var(--primary-soft); color: var(--primary-light); }
+
+/* Editor */
+.fab-editor { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); min-height: 480px; }
+.fab-editor-vacio {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.75rem; height: 480px; color: var(--text-muted); text-align: center;
+}
+.fab-editor-vacio-icon { font-size: 3rem; opacity: 0.5; }
+.fab-editor-panel { display: grid; grid-template-columns: 340px 1fr; gap: 0; }
+.fab-controles { padding: 1.25rem; border-right: 1px solid var(--border); max-height: 78vh; overflow-y: auto; }
+.fab-editor-titulo { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-bottom: 1rem; }
+.fab-grupo { margin-bottom: 1.25rem; }
+.fab-grupo-h { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 0.6rem; font-weight: 700; }
+.fab-campo { margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.fab-label { font-size: 0.8rem; color: var(--text-soft); }
+.fab-select { cursor: pointer; }
+.fab-hint { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; line-height: 1.4; }
+
+/* Filas de color */
+.fab-color-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.55rem; }
+.fab-color-row .fab-label { flex: 1; }
+.fab-color-ctl { display: flex; align-items: center; gap: 0.4rem; }
+.fab-color-ctl input[type="color"] { width: 34px; height: 30px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: transparent; cursor: pointer; }
+.fab-color-hex { width: 92px; font-family: var(--font-mono); font-size: 0.78rem; padding: 0.35rem 0.4rem; }
+
+/* Switch */
+.fab-switch { position: relative; display: inline-block; width: 42px; height: 24px; cursor: pointer; }
+.fab-switch input { opacity: 0; width: 0; height: 0; }
+.fab-switch span { position: absolute; inset: 0; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 999px; transition: background 0.15s; }
+.fab-switch span::before { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; background: var(--text-soft); border-radius: 50%; transition: transform 0.15s var(--ease); }
+.fab-switch input:checked + span { background: var(--primary); border-color: var(--primary); }
+.fab-switch input:checked + span::before { transform: translateX(18px); background: #fff; }
+
+.fab-acciones { display: flex; gap: 0.6rem; margin-top: 1.25rem; }
+.fab-acciones .btn { flex: 1; }
+
+/* Preview */
+.fab-preview { padding: 1.25rem; display: flex; align-items: flex-start; justify-content: center; background: var(--bg); border-radius: 0 var(--r-lg) var(--r-lg) 0; }
+.fab-preview-frame { width: 390px; max-width: 100%; height: 74vh; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-card); background: #fff; }
+.fab-preview-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+@media (max-width: 900px) {
+  .fab-layout { grid-template-columns: 1fr; }
+  .fab-editor-panel { grid-template-columns: 1fr; }
+  .fab-controles { border-right: 0; border-bottom: 1px solid var(--border); max-height: none; }
+  .fab-preview-frame { width: 100%; height: 60vh; }
+}

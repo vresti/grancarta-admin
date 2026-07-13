@@ -18,7 +18,7 @@
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap">
 
-  <link rel="stylesheet" href="css/style.css?v=2">
+  <link rel="stylesheet" href="css/style.css?v=3">
   <link rel="stylesheet" href="css/equipo.css">
 
   <link rel="icon" type="image/svg+xml"
@@ -224,6 +224,10 @@
       <div class="dash-header-right">
         <button class="btn-icon" onclick="volverAEmpresas()" title="Cambiar de empresa">
           ←
+        </button>
+        <button class="btn btn-secondary btn-sm" id="btn-fabrica"
+                onclick="abrirFabrica()" style="display:none;" title="Fábrica de pieles">
+          🎨 Fábrica
         </button>
         <button class="btn btn-secondary btn-sm" id="btn-panel-sistema"
                 onclick="abrirPanelSistema()" style="display:none;" title="Panel del sistema">
@@ -556,6 +560,49 @@
       </div>
     </div>
   </div>
+
+  <!-- ====================================================== -->
+  <!-- PANTALLA: FÁBRICA DE PIELES (Nivel 0)                   -->
+  <!-- ====================================================== -->
+  <section id="screen-fabrica" class="screen">
+
+    <header class="dash-header">
+      <div class="dash-header-left">
+        <button class="btn-icon" onclick="volverADashboard()" title="Volver">←</button>
+        <div>
+          <div class="dash-title">🎨 Fábrica de Pieles</div>
+          <div class="dash-subtitle">Temas de carta · curador del sistema</div>
+        </div>
+      </div>
+      <div class="dash-header-right">
+        <button class="btn btn-primary" onclick="fabricaNueva()">
+          <span>+</span><span>Nueva piel</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="dash-main fab-main">
+      <div class="fab-layout">
+        <aside class="fab-lista" id="fab-lista">
+          <div class="fab-lista-loading">Cargando pieles…</div>
+        </aside>
+        <div class="fab-editor">
+          <div class="fab-editor-vacio" id="fab-editor-vacio">
+            <div class="fab-editor-vacio-icon">🎨</div>
+            <div>Elegí una piel de la lista para editarla,<br>o creá una nueva.</div>
+          </div>
+          <div class="fab-editor-panel" id="fab-editor-panel" style="display:none;">
+            <div class="fab-controles" id="fab-controles"><!-- JS --></div>
+            <div class="fab-preview">
+              <div class="fab-preview-frame">
+                <iframe id="fab-preview-iframe" srcdoc="" sandbox="allow-same-origin" title="Vista previa de la piel"></iframe>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </section>
 
   <!-- ====================================================== -->
   <!-- PANTALLA: WIZARD (genérico, reutilizable)              -->
@@ -1378,9 +1425,9 @@
   <script src="js/ui.js?v=30"></script>
   <script src="js/wizard.js?v=30"></script>
   <script src="js/pieles.js?v=4"></script>
-  <script src="js/preview.js?v=31"></script>
-  <script src="js/firestore-horno.js?v=44"></script>
-  <script src="js/app.js?v=49"></script>
+  <script src="js/preview.js?v=32"></script>
+  <script src="js/firestore-horno.js?v=45"></script>
+  <script src="js/app.js?v=50"></script>
 
 </body>
 </html>

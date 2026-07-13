@@ -54,11 +54,16 @@ const CartaRenderer = (function() {
    * @param {string} datos.nombreEmpresa - nombre comercial
    * @param {string} datos.nombreLocal - nombre del local (opcional)
    * @param {string} datos.template - id de la piel ('minimalista' | 'clasico_madera' | ...)
+   * @param {Object} [datos.pielObj] - piel COMPLETA para pintar directo (Fábrica:
+   *        previsualiza una piel editada en memoria que aún no está en PRESETS).
+   *        Si viene, tiene prioridad sobre datos.template.
    * @return {string} HTML completo
    */
   function renderizar(datos) {
     const templateKey = datos.template || 'minimalista';
-    const piel = Pieles.PRESETS[templateKey] || Pieles.PRESETS.minimalista;
+    const piel = (datos.pielObj && datos.pielObj.color && datos.pielObj.fuente)
+      ? datos.pielObj
+      : (Pieles.PRESETS[templateKey] || Pieles.PRESETS.minimalista);
     const css = Pieles.generarCss(piel);
     const redondeo = datos.carta.Redondeo || '10';
 
