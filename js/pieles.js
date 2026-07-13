@@ -766,6 +766,88 @@ ${p.productoColumnGap ? `
   }
 
   // ============================================================
+  // VALIDACIÓN AL REGISTRAR (Fábrica, sub-paso 5)
+  // Una piel es DATO que generarCss vierte directo en un <style> (admin + Worker).
+  // Antes de guardarla se valida: perillas esperadas + NADA de código ejecutable.
+  // Candado para cuando entren pieles personalizadas (autoría no confiable) y red
+  // contra guardar una piel rota. Devuelve { ok, errores: [] }.
+  // ============================================================
+
+  // Color CSS seguro: hex (3-8), rgb()/rgba() solo números, o nombre simple, o vacío.
+  var _COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\(\s*[\d.,\s%]+\)|[a-zA-Z]{2,20})?$/;
+  var _FAM_RE = /^[\w\s'",\-]+$/;
+  // Patrones de ruptura del <style>/inyección — prohibidos en CUALQUIER string.
+  var _PELIGRO_RE = /<\/|<style|<script|expression\s*\(|javascript:|@import|<!--|url\s*\(\s*['"]?\s*(javascript|data):/i;
+
+  var _ENUMS = {
+    divisor:    ['linea', 'rombos', 'punteado', 'nada'],
+    densidad:   ['aireado', 'compacto'],
+    esquinas:   ['rectas', 'redondeadas'],
+    caja:       ['ninguna', 'borde', 'doble-marco'],
+    ornamentos: ['ninguno', 'esquinas-divisor'],
+    fondoDeco:  ['plano', 'textura', 'glow', 'degrade'],
+    tipo:       ['generica', 'personalizada']
+  };
+
+  function validar(piel) {
+    var errores = [];
+    if (!_esObj(piel)) return { ok: false, errores: ['La piel no es un objeto válido.'] };
+
+    // Estructura mínima que generarCss necesita.
+    if (typeof piel.id !== 'string' || !piel.id.trim()) errores.push('Falta el id de la piel.');
+    if (!_esObj(piel.color)) errores.push('Falta el bloque de colores.');
+    if (!_esObj(piel.fuente)) errores.push('Falta la tipografía.');
+
+    // 1) Colores: cada color.* debe ser un color CSS seguro (o vacío). fondoImage
+    //    es CSS libre (gradiente) → lo cubre el escaneo anti-inyección de abajo.
+    if (_esObj(piel.color)) {
+      for (var k in piel.color) {
+        if (k === 'fondoImage') continue;
+        var v = piel.color[k];
+        if (typeof v === 'string' && v !== '' && !_COLOR_RE.test(v.trim())) {
+          errores.push('Color inválido en "' + k + '": ' + v);
+        }
+      }
+    }
+
+    // 2) Tipografía: import SOLO de Google Fonts; familias sin caracteres raros.
+    if (_esObj(piel.fuente)) {
+      var imp = String(piel.fuente.import || '');
+      if (imp && !/^https:\/\/fonts\.googleapis\.com\//.test(imp)) {
+        errores.push('La tipografía debe importarse de fonts.googleapis.com.');
+      }
+      ['titulos', 'cuerpo'].forEach(function (f) {
+        var val = piel.fuente[f];
+        if (val && !_FAM_RE.test(String(val))) errores.push('Familia tipográfica inválida en "' + f + '".');
+      });
+    }
+
+    // 3) Enums en su set; flags booleanas.
+    for (var campo in _ENUMS) {
+      if (piel[campo] !== undefined && _ENUMS[campo].indexOf(piel[campo]) === -1) {
+        errores.push('Valor inválido en "' + campo + '": ' + piel[campo]);
+      }
+    }
+    if (piel.mayusculas !== undefined && typeof piel.mayusculas !== 'boolean') errores.push('"mayusculas" debe ser verdadero/falso.');
+    if (piel.premium !== undefined && typeof piel.premium !== 'boolean') errores.push('"premium" debe ser verdadero/falso.');
+
+    // 4) Candado anti-inyección: NINGÚN string (a cualquier profundidad) puede
+    //    contener patrones que rompan el <style> o metan HTML/JS/@import.
+    function scan(obj, ruta) {
+      if (typeof obj === 'string') {
+        if (_PELIGRO_RE.test(obj)) errores.push('Texto peligroso en "' + (ruta || 'piel') + '" (posible inyección).');
+      } else if (Array.isArray(obj)) {
+        for (var i = 0; i < obj.length; i++) scan(obj[i], ruta + '[' + i + ']');
+      } else if (_esObj(obj)) {
+        for (var kk in obj) scan(obj[kk], ruta ? ruta + '.' + kk : kk);
+      }
+    }
+    scan(piel, '');
+
+    return { ok: errores.length === 0, errores: errores };
+  }
+
+  // ============================================================
   // API PÚBLICA
   // ============================================================
 
@@ -773,6 +855,7 @@ ${p.productoColumnGap ? `
     PRESETS: PRESETS,
     generarCss: generarCss,
     hidratar: hidratar,
+    validar: validar,
     listar: function() {
       // Respeta `orden` y `activo` cuando vienen de FS; retrocompatible con las
       // del código (que no los traen): mantienen el orden de inserción y se muestran.

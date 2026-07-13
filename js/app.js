@@ -4915,6 +4915,16 @@ const AdminApp = (function() {
         _fabWork.id = id;
       }
       delete _fabWork._baseId;   // metadato de UI, no va a FS
+
+      // Validación al registrar (sub-paso 5): perillas esperadas + sin código
+      // ejecutable. Candado antes de escribir a FS (y guardarPiel revalida).
+      const val = GranCartaPieles.validar(_fabWork);
+      if (!val.ok) {
+        AdminUI.toast('Revisá la piel: ' + val.errores.slice(0, 2).join(' · '), 'error');
+        console.warn('[Fábrica] piel inválida:', val.errores);
+        return;
+      }
+
       await window.GCFirestore.guardarPiel(id, _fabWork);
       AdminUI.toast(_fabEsNueva ? 'Piel creada' : 'Piel guardada', 'success');
       _fabId = id; _fabEsNueva = false;

@@ -1551,6 +1551,12 @@
     if (!id) throw new Error('falta el id de la piel');
     if (!piel || !piel.color || !piel.fuente) throw new Error('la piel está incompleta');
     const doc = Object.assign({}, piel, { id: id });   // el objeto completo (perillas + tokens + metadatos)
+    // Segunda barrera de validación (sub-paso 5): sanea antes del write a FS,
+    // aunque el caller ya haya validado. Sin código ejecutable en la piel.
+    if (typeof GranCartaPieles !== 'undefined' && GranCartaPieles.validar) {
+      const val = GranCartaPieles.validar(doc);
+      if (!val.ok) throw new Error('piel inválida: ' + val.errores.slice(0, 2).join(' · '));
+    }
     await db().collection('pieles').doc(id).set(doc);
     return id;
   }
