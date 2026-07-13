@@ -269,6 +269,89 @@ const GranCartaPieles = (function() {
 
 
   // ============================================================
+  // PIELES NUEVAS (MVP por rubro)
+  // Se definen clonando una piel probada y pisando SOLO las
+  // perillas que cambian. Los tokens finos se heredan de la base.
+  // ============================================================
+
+  function _esObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+  function _fusion(base, ov) {
+    const out = Object.assign({}, base);
+    for (const k in ov) {
+      out[k] = (_esObj(out[k]) && _esObj(ov[k])) ? _fusion(out[k], ov[k]) : ov[k];
+    }
+    return out;
+  }
+  function crearPiel(baseId, ov) {
+    return _fusion(JSON.parse(JSON.stringify(PRESETS[baseId])), ov);
+  }
+
+  // ☕ CAFETERÍA — crema cálida, tarjeta con borde redondeado, fondo degradé
+  PRESETS.cafeteria = crearPiel('minimalista', {
+    id: 'cafeteria', nombre: 'Cafetería', premium: false, rubro: 'cafeteria',
+    descripcion: 'Crema cálida, bordes suaves. Para cafés y confiterías.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Bitter:wght@400;500;600;700&family=Nunito+Sans:wght@300;400;600;700&display=swap',
+      titulos: "'Bitter', serif", cuerpo: "'Nunito Sans', sans-serif"
+    },
+    color: {
+      fondo: '#F4ECE0',
+      fondoImage: 'linear-gradient(180deg, #F7F0E6 0%, #EFE4D3 100%)',
+      texto: '#4A3B2E', nombre: '#4A3B2E', tituloEmpresa: '#6F4E37', tituloSeccion: '#6F4E37',
+      acento: '#C08552', precio: '#8A5A38', local: '#A0866B', seccionDesc: '#A0866B',
+      productoDesc: '#7A6A58', tag: '#A0866B', tagAlergeno: '#B85C00', dots: '#D8C5A8',
+      footer: '#8A7358', footerBorde: '#E2D3BC', footerHover: '', notas: '#8A7358',
+      notasBorde: '#E2D3BC', empty: '#A0866B'
+    },
+    mayusculas: false,
+    esquinas: 'redondeadas',
+    caja: 'borde',
+    fondoDeco: 'degrade',
+    cartaMarco: { border: '1px solid #E2D3BC', radius: '16px', padding: '3rem 2.25rem' }
+  });
+
+  // 🍣 SUSHI BAR — negro con acento rojo, mínimo y filoso
+  PRESETS.sushi_bar = crearPiel('moderno_oscuro', {
+    id: 'sushi_bar', nombre: 'Sushi Bar', premium: false, rubro: 'sushi',
+    descripcion: 'Negro y rojo, mínimo y filoso. Para sushi y cocina asiática.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Montserrat', sans-serif", cuerpo: "'Inter', sans-serif"
+    },
+    color: {
+      fondo: '#141414',
+      fondoImage: 'radial-gradient(ellipse at top, rgba(192, 57, 43, 0.10) 0%, transparent 55%)',
+      texto: '#E6E6E6', nombre: '#F5F5F5', tituloEmpresa: '#F5F5F5', tituloSeccion: '#C0392B',
+      acento: '#C0392B', precio: '#C0392B', local: '#C0392B', seccionDesc: '#8A8A8A',
+      productoDesc: '#9A9A9A', tag: '#8A8A8A', tagAlergeno: '#D98880', dots: '#3A3A3A',
+      footer: '#8A8A8A', footerBorde: '#2A2A2A', footerHover: '#C0392B', notas: '#9A9A9A',
+      notasBorde: '#2A2A2A', empty: '#8A8A8A'
+    }
+  });
+
+  // 🔥 PARRILLA AL FUEGO — carbón y brasa, letras robustas, degradé oscuro
+  PRESETS.parrilla_fuego = crearPiel('minimalista', {
+    id: 'parrilla_fuego', nombre: 'Parrilla al Fuego', premium: false, rubro: 'parrilla',
+    descripcion: 'Carbón y brasa, letras robustas. Para parrillas y ahumados.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Oswald', sans-serif", cuerpo: "'Inter', sans-serif"
+    },
+    color: {
+      fondo: '#211A15',
+      fondoImage: 'linear-gradient(180deg, #2A211A 0%, #17110C 100%)',
+      texto: '#EADFD0', nombre: '#F5ECDD', tituloEmpresa: '#E8A44C', tituloSeccion: '#E8A44C',
+      acento: '#C4441E', precio: '#E8A44C', local: '#B89B7C', seccionDesc: '#B89B7C',
+      productoDesc: '#B0A08C', tag: '#B89B7C', tagAlergeno: '#E8955C', dots: '#4A3A2C',
+      footer: '#B89B7C', footerBorde: '#3A2E24', footerHover: '#E8A44C', notas: '#B0A08C',
+      notasBorde: '#3A2E24', empty: '#B89B7C'
+    },
+    mayusculas: true,
+    fondoDeco: 'degrade'
+  });
+
+
+  // ============================================================
   // GENERADOR DE CSS DESDE PERILLAS
   // ============================================================
 
