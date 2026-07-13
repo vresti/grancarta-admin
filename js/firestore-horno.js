@@ -982,6 +982,13 @@
       return { id: s.id, nombre: s.nombre, descripcion: s.descripcion || '', orden: s.orden || 0, productos: items };
     }).filter(function (s) { return s.productos.length > 0; });
 
+    // Foto (snapshot) de la piel: se congela al publicar. Editar la piel
+    // después NO re-pinta esta carta; el Worker pinta desde esta foto.
+    const _tpl = carta.template || 'minimalista';
+    const pielSnap = (typeof GranCartaPieles !== 'undefined')
+      ? (GranCartaPieles.PRESETS[_tpl] || GranCartaPieles.PRESETS.minimalista)
+      : null;
+
     const doc = {
       id_local: idLocal, id_empresa: idEmpresa, audience_slug: audience,
       nombre_canal: pub.nombre_canal || '', id_carta: cartaId,
@@ -995,7 +1002,7 @@
         whatsapp: loc.whatsapp || '', mensaje_whatsapp_default: loc.mensaje_whatsapp_default || ''
       },
       carta: {
-        nombre: carta.nombre || '', template: carta.template || '',
+        nombre: carta.nombre || '', template: _tpl, piel: pielSnap,
         redondeo: (carta.redondeo === undefined ? null : carta.redondeo),
         pie_direccion: carta.pie_direccion || '', pie_telefono: carta.pie_telefono || '',
         pie_mail: carta.pie_mail || '', notas: carta.notas || ''
