@@ -350,6 +350,102 @@ const GranCartaPieles = (function() {
     fondoDeco: 'degrade'
   });
 
+  // 🍺 CERVECERÍA — crema y ámbar, tabla con borde, letras condensadas
+  PRESETS.cerveceria = crearPiel('minimalista', {
+    id: 'cerveceria', nombre: 'Cervecería', premium: false, rubro: 'cerveceria',
+    descripcion: 'Crema y ámbar, tabla de bar. Para cervecerías y tap houses.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Staatliches&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Staatliches', sans-serif", cuerpo: "'Inter', sans-serif"
+    },
+    color: {
+      fondo: '#F6EDD8', fondoImage: '',
+      texto: '#3B2C1A', nombre: '#3B2C1A', tituloEmpresa: '#7A4A1E', tituloSeccion: '#7A4A1E',
+      acento: '#C8860D', precio: '#8B5A2B', local: '#9C8468', seccionDesc: '#9C8468',
+      productoDesc: '#6E5C46', tag: '#9C8468', tagAlergeno: '#B85C00', dots: '#D8C29A',
+      footer: '#7A6A52', footerBorde: '#E0CFA8', footerHover: '', notas: '#7A6A52',
+      notasBorde: '#E0CFA8', empty: '#9C8468'
+    },
+    mayusculas: true, esquinas: 'rectas', caja: 'borde', fondoDeco: 'plano',
+    cartaMarco: { border: '2px solid #C8860D', radius: '0', padding: '2.5rem 2rem' }
+  });
+
+  // 🍔 HAMBURGUESERÍA — crema, rojo y naranja, impacto casual
+  PRESETS.hamburgueseria = crearPiel('minimalista', {
+    id: 'hamburgueseria', nombre: 'Hamburguesería', premium: false, rubro: 'hamburgueseria',
+    descripcion: 'Crema, rojo y naranja, casual con impacto. Para burgers y comida rápida.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito+Sans:wght@300;400;600;700&display=swap',
+      titulos: "'Bebas Neue', sans-serif", cuerpo: "'Nunito Sans', sans-serif"
+    },
+    color: {
+      fondo: '#FFF8EE', fondoImage: '',
+      texto: '#2B2B2B', nombre: '#2B2B2B', tituloEmpresa: '#D62828', tituloSeccion: '#D62828',
+      acento: '#F77F00', precio: '#D62828', local: '#8A8A8A', seccionDesc: '#8A8A8A',
+      productoDesc: '#6E6E6E', tag: '#8A8A8A', tagAlergeno: '#B85C00', dots: '#E0D6C8',
+      footer: '#8A8A8A', footerBorde: '#EDE3D5', footerHover: '', notas: '#8A8A8A',
+      notasBorde: '#EDE3D5', empty: '#8A8A8A'
+    },
+    mayusculas: true, esquinas: 'redondeadas', caja: 'ninguna', fondoDeco: 'plano'
+  });
+
+  // 🦐 MAR Y COSTA — arena, azul mar y turquesa, náutico limpio
+  PRESETS.mariscos = crearPiel('minimalista', {
+    id: 'mariscos', nombre: 'Mar y Costa', premium: false, rubro: 'mariscos',
+    descripcion: 'Arena, azul mar y turquesa, fresco y náutico. Para mariscos y pescados.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Josefin Sans', sans-serif", cuerpo: "'Inter', sans-serif"
+    },
+    color: {
+      fondo: '#EEF3F3', fondoImage: 'linear-gradient(180deg, #F1F5F5 0%, #E4EDED 100%)',
+      texto: '#1F3A4D', nombre: '#1F3A4D', tituloEmpresa: '#14556B', tituloSeccion: '#14556B',
+      acento: '#2E8BA6', precio: '#14556B', local: '#7E96A1', seccionDesc: '#7E96A1',
+      productoDesc: '#5E7784', tag: '#7E96A1', tagAlergeno: '#B85C00', dots: '#C4D3D6',
+      footer: '#6E868F', footerBorde: '#D3E0E1', footerHover: '', notas: '#6E868F',
+      notasBorde: '#D3E0E1', empty: '#7E96A1'
+    },
+    mayusculas: true, esquinas: 'rectas', caja: 'ninguna', fondoDeco: 'degrade'
+  });
+
+  // 🍝 TRATTORIA — crema, verde y tomate, serif italiano cálido
+  PRESETS.pastas = crearPiel('minimalista', {
+    id: 'pastas', nombre: 'Trattoria', premium: false, rubro: 'pastas',
+    descripcion: 'Crema, verde y tomate, serif italiano. Para pastas y cocina italiana.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Lora:wght@400;500;600&display=swap',
+      titulos: "'Playfair Display', serif", cuerpo: "'Lora', serif"
+    },
+    color: {
+      fondo: '#FBF6EC', fondoImage: '',
+      texto: '#3A2E20', nombre: '#3A2E20', tituloEmpresa: '#6B2737', tituloSeccion: '#2E7D4F',
+      acento: '#2E7D4F', precio: '#6B2737', local: '#8A7A64', seccionDesc: '#8A7A64',
+      productoDesc: '#6E5E48', tag: '#8A7A64', tagAlergeno: '#A0522D', dots: '#DAD0BC',
+      footer: '#7A6A52', footerBorde: '#E6DAC4', footerHover: '', notas: '#7A6A52',
+      notasBorde: '#E6DAC4', empty: '#8A7A64'
+    },
+    mayusculas: false, esquinas: 'rectas', caja: 'ninguna', fondoDeco: 'plano'
+  });
+
+  // 🍸 BAR NOCTURNO — azul-negro con cobre, elegante de noche
+  PRESETS.bar_nocturno = crearPiel('moderno_oscuro', {
+    id: 'bar_nocturno', nombre: 'Bar Nocturno', premium: true, rubro: 'bares',
+    descripcion: 'Azul-negro con cobre, elegante de noche. Para bares y coctelerías.',
+    fuente: {
+      import: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap',
+      titulos: "'Montserrat', sans-serif", cuerpo: "'Inter', sans-serif"
+    },
+    color: {
+      fondo: '#14161A',
+      fondoImage: 'radial-gradient(ellipse at top, rgba(211, 161, 92, 0.09) 0%, transparent 55%)',
+      texto: '#DDE1E3', nombre: '#F0F2F3', tituloEmpresa: '#F0F2F3', tituloSeccion: '#D3A15C',
+      acento: '#D3A15C', precio: '#D3A15C', local: '#D3A15C', seccionDesc: '#8A9299',
+      productoDesc: '#9AA1A6', tag: '#8A9299', tagAlergeno: '#C8A06A', dots: '#33383D',
+      footer: '#8A9299', footerBorde: '#262A2E', footerHover: '#D3A15C', notas: '#9AA1A6',
+      notasBorde: '#262A2E', empty: '#8A9299'
+    }
+  });
+
 
   // ============================================================
   // GENERADOR DE CSS DESDE PERILLAS

@@ -2389,6 +2389,71 @@ input:focus-visible {
   background: #C4441E;
 }
 
+.template-preview-cerveceria {
+  background: #F6EDD8;
+  border-color: #C8860D !important;
+}
+.template-preview-cerveceria .template-preview-title {
+  font-family: 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  color: #7A4A1E;
+}
+.template-preview-cerveceria .template-preview-line {
+  background: #C8860D;
+}
+
+.template-preview-hamburgueseria {
+  background: #FFF8EE;
+  border-color: #D62828 !important;
+}
+.template-preview-hamburgueseria .template-preview-title {
+  font-family: 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  color: #D62828;
+}
+.template-preview-hamburgueseria .template-preview-line {
+  background: #F77F00;
+}
+
+.template-preview-mariscos {
+  background: #EEF3F3;
+  background-image: linear-gradient(180deg, #F1F5F5 0%, #E4EDED 100%);
+  border-color: #2E8BA6 !important;
+}
+.template-preview-mariscos .template-preview-title {
+  font-family: 'Arial', sans-serif;
+  color: #14556B;
+}
+.template-preview-mariscos .template-preview-line {
+  background: #2E8BA6;
+}
+
+.template-preview-pastas {
+  background: #FBF6EC;
+  border-color: #2E7D4F !important;
+}
+.template-preview-pastas .template-preview-title {
+  font-family: 'Georgia', serif;
+  font-weight: 700;
+  color: #6B2737;
+}
+.template-preview-pastas .template-preview-line {
+  background: #2E7D4F;
+}
+
+.template-preview-bar_nocturno {
+  background: #14161A;
+  background-image: radial-gradient(ellipse at top, rgba(211, 161, 92, 0.18) 0%, transparent 70%);
+  border-color: rgba(211, 161, 92, 0.4) !important;
+}
+.template-preview-bar_nocturno .template-preview-title {
+  font-family: 'Arial', sans-serif;
+  color: #D3A15C;
+}
+.template-preview-bar_nocturno .template-preview-line {
+  background: #D3A15C;
+}
+
 .template-info {
   flex: 1;
   min-width: 0;
