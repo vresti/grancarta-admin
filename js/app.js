@@ -4698,6 +4698,104 @@ const AdminApp = (function() {
 
   function _fabClonar(obj) { return JSON.parse(JSON.stringify(obj)); }
 
+  // ---------------------------------------------------------------------------
+  // DERIVADORES DE PERILLAS (las 6 "decorativas") — TODO del lado de la Fábrica.
+  // Cada perilla escribe los TOKENS FINOS que generarCss YA lee (paddings,
+  // cartaMarco, fondoImage, divisorTok). NO se toca el motor ni el Worker: las
+  // 11 pieles quedan intactas; solo la piel que el curador edita cambia.
+  // ---------------------------------------------------------------------------
+
+  // Presets de densidad (mismos tokens que el motor consume).
+  var _FAB_DENSIDAD = {
+    aireado:  { bodyPadding: '4rem 1.5rem 3rem', bodyPaddingMobile: '2rem 1.25rem', headerMb: '3.5rem',
+                seccionesGap: '3rem', seccionesGapMobile: '2.5rem', productosGap: '1.5rem', productosGapMobile: '1.25rem' },
+    compacto: { bodyPadding: '2.5rem 1.5rem 2rem', bodyPaddingMobile: '1.5rem 1rem', headerMb: '2.25rem',
+                seccionesGap: '2rem', seccionesGapMobile: '1.6rem', productosGap: '1.1rem', productosGapMobile: '1rem' }
+  };
+
+  // Helpers de color (hex → rgb/rgba, aclarar/oscurecer). Producen strings
+  // seguros (pasan GranCartaPieles.validar: sin '<', '@import', 'url(...)').
+  function _fabHexRgb(hex) {
+    var h = String(hex || '').trim().replace('#', '');
+    if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+  }
+  function _fabRgba(hex, a) { var c = _fabHexRgb(hex); return c ? ('rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + a + ')') : ('rgba(0,0,0,' + a + ')'); }
+  function _fabMix(hex, tgt, t) {
+    var c = _fabHexRgb(hex); if (!c) return hex;
+    function m(a, b) { return Math.round(a + (b - a) * t); }
+    var r = m(c.r, tgt.r), g = m(c.g, tgt.g), b = m(c.b, tgt.b);
+    return '#' + [r, g, b].map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+  }
+  function _fabAclarar(hex, pct) { return _fabMix(hex, { r: 255, g: 255, b: 255 }, pct / 100); }
+  function _fabOscurecer(hex, pct) { return _fabMix(hex, { r: 0, g: 0, b: 0 }, pct / 100); }
+
+  function _fabRadio(w) { return w.esquinas === 'redondeadas' ? '14px' : '0'; }
+
+  // caja: genera (o quita el efecto de) el cartaMarco desde los colores.
+  function _fabAplicarCaja(w, val) {
+    w.caja = val;
+    if (val === 'ninguna') return;   // el motor ignora cartaMarco cuando caja=ninguna
+    var acento = (w.color && w.color.acento) || '#888888';
+    var fondo = (w.color && w.color.fondo) || '#ffffff';
+    var base = w.cartaMarco || {};
+    if (val === 'borde') {
+      w.cartaMarco = Object.assign({}, base, {
+        border: '1px solid ' + acento, radius: _fabRadio(w),
+        padding: '3rem 2.25rem', paddingMobile: '2rem 1.5rem'
+      });
+    } else if (val === 'doble-marco') {
+      var tinte = _fabRgba(_fabAclarar(fondo, 6), 0.6);
+      w.cartaMarco = Object.assign({}, base, {
+        bg: tinte, padding: '3rem 2.5rem', paddingMobile: '2rem 1.5rem',
+        border: '2px solid ' + acento, radius: _fabRadio(w),
+        shadow: '0 0 0 8px ' + tinte + ', 0 0 0 10px ' + acento + ', 0 10px 40px ' + _fabRgba('#000000', 0.15),
+        shadowMobile: '0 0 0 6px ' + tinte + ', 0 0 0 8px ' + acento,
+        ornamento: base.ornamento || '✦', ornamentoColor: acento
+      });
+    }
+  }
+
+  // esquinas: solo redondea el marco (si hay). Sin marco, no hay qué redondear.
+  function _fabAplicarEsquinas(w, val) {
+    w.esquinas = val;
+    if (w.cartaMarco) w.cartaMarco.radius = _fabRadio(w);
+  }
+
+  // ornamentos: floreo en las esquinas (necesita un cartaMarco donde colgarlo).
+  function _fabAplicarOrnamentos(w, val) {
+    w.ornamentos = val;
+    if (val !== 'esquinas-divisor') return;
+    var acento = (w.color && w.color.acento) || '#888888';
+    if (!w.cartaMarco) w.cartaMarco = { border: '1px solid ' + acento, radius: _fabRadio(w), padding: '3rem 2.25rem', paddingMobile: '2rem 1.5rem' };
+    if (!w.cartaMarco.ornamento) w.cartaMarco.ornamento = '✦';
+    w.cartaMarco.ornamentoColor = acento;
+  }
+
+  // fondoDeco: genera color.fondoImage (el motor lo pinta si existe).
+  function _fabAplicarFondoDeco(w, val) {
+    w.fondoDeco = val;
+    if (!w.color) w.color = {};
+    var fondo = w.color.fondo || '#ffffff';
+    var acento = w.color.acento || '#888888';
+    if (val === 'plano') w.color.fondoImage = '';
+    else if (val === 'degrade') w.color.fondoImage = 'linear-gradient(180deg, ' + _fabAclarar(fondo, 5) + ' 0%, ' + _fabOscurecer(fondo, 5) + ' 100%)';
+    else if (val === 'glow') w.color.fondoImage = 'radial-gradient(ellipse at top, ' + _fabRgba(acento, 0.08) + ' 0%, transparent 55%)';
+    else if (val === 'textura') w.color.fondoImage = 'repeating-linear-gradient(45deg, ' + _fabRgba(acento, 0.03) + ' 0, ' + _fabRgba(acento, 0.03) + ' 2px, transparent 2px, transparent 12px)';
+  }
+
+  // divisor: rombos inyecta el glifo; 'nada' apaga el divisorTok.
+  function _fabAplicarDivisor(w, val) {
+    w.divisor = val;
+    if (val === 'rombos') {
+      if (!w.divisorTok) w.divisorTok = { ancho: '80px', alto: '2px', margin: '1.5rem auto', opacity: '1' };
+      if (!w.divisorTok.rombo) w.divisorTok.rombo = '◆';
+    } else if (val === 'nada') {
+      w.divisorTok = Object.assign({}, w.divisorTok, { ancho: '0', alto: '0' });
+    }
+  }
+
   async function abrirFabrica() {
     if (!state.esAdmin) { AdminUI.toast('Solo para administradores del sistema', 'error'); return; }
     AdminUI.mostrarPantalla('screen-fabrica');
@@ -4797,14 +4895,31 @@ const AdminApp = (function() {
         }).join('')
       + '</select></div>';
 
+    // Helper: <select> de perilla (opciones = [[valor, etiqueta], ...]).
+    function selPerilla(fn, actual, opciones) {
+      return '<select class="login-input fab-select" onchange="' + fn + '(this.value)">'
+        + opciones.map(function (o) {
+            return '<option value="' + o[0] + '"' + (o[0] === actual ? ' selected' : '') + '>' + o[1] + '</option>';
+          }).join('')
+        + '</select>';
+    }
+
     const gestosHtml = '<div class="fab-campo"><label class="fab-label">Mayúsculas en títulos</label>'
       + '<label class="fab-switch"><input type="checkbox"' + (p.mayusculas ? ' checked' : '') + ' onchange="fabricaSetBool(\'mayusculas\', this.checked)"><span></span></label></div>'
+      + '<div class="fab-campo"><label class="fab-label">Densidad</label>'
+      + selPerilla('fabricaSetDensidad', (p.densidad || 'aireado'), [['aireado', 'Aireada'], ['compacto', 'Compacta']]) + '</div>'
       + '<div class="fab-campo"><label class="fab-label">Divisor</label>'
-      + '<select class="login-input fab-select" onchange="fabricaSetDivisor(this.value)">'
-      + ['linea', 'rombos'].map(function (d) {
-          return '<option value="' + d + '"' + (d === (p.divisor || 'linea') ? ' selected' : '') + '>' + (d === 'linea' ? 'Línea simple' : 'Rombos ◆') + '</option>';
-        }).join('')
-      + '</select></div>';
+      + selPerilla('fabricaSetDivisor', (p.divisor || 'linea'), [['linea', 'Línea simple'], ['rombos', 'Rombos ◆'], ['nada', 'Sin divisor']]) + '</div>';
+
+    const decorativosHtml = '<div class="fab-campo"><label class="fab-label">Caja / marco</label>'
+      + selPerilla('fabricaSetCaja', (p.caja || 'ninguna'), [['ninguna', 'Ninguna'], ['borde', 'Borde simple'], ['doble-marco', 'Doble marco']]) + '</div>'
+      + '<div class="fab-campo"><label class="fab-label">Esquinas</label>'
+      + selPerilla('fabricaSetEsquinas', (p.esquinas || 'rectas'), [['rectas', 'Rectas'], ['redondeadas', 'Redondeadas']]) + '</div>'
+      + '<div class="fab-campo"><label class="fab-label">Ornamentos</label>'
+      + selPerilla('fabricaSetOrnamentos', (p.ornamentos || 'ninguno'), [['ninguno', 'Ninguno'], ['esquinas-divisor', 'Floreo en esquinas ✦']]) + '</div>'
+      + '<div class="fab-campo"><label class="fab-label">Fondo decorativo</label>'
+      + selPerilla('fabricaSetFondoDeco', (p.fondoDeco || 'plano'), [['plano', 'Plano'], ['degrade', 'Degradé'], ['glow', 'Resplandor'], ['textura', 'Textura']]) + '</div>'
+      + '<div class="fab-hint">Caja/esquinas/ornamentos se ven sobre un marco; el fondo decorativo se genera desde tus colores.</div>';
 
     const metaHtml = '<div class="fab-campo"><label class="fab-label">Nombre</label>'
       + '<input type="text" class="login-input" id="fab-nombre" value="' + AdminUI.escapeHtml(p.nombre || '') + '" oninput="fabricaSetMeta(\'nombre\', this.value)" placeholder="Ej: Bistró Verde"></div>'
@@ -4824,6 +4939,7 @@ const AdminApp = (function() {
       + baseHtml
       + '<div class="fab-grupo"><div class="fab-grupo-h">Colores</div>' + coloresHtml + '</div>'
       + '<div class="fab-grupo"><div class="fab-grupo-h">Tipografía y gestos</div>' + fuenteHtml + gestosHtml + '</div>'
+      + '<div class="fab-grupo"><div class="fab-grupo-h">Decorativos</div>' + decorativosHtml + '</div>'
       + '<div class="fab-acciones"><button class="btn btn-secondary" onclick="fabricaCancelar()">Cancelar</button>'
       + '<button class="btn btn-primary" id="fab-btn-guardar" onclick="fabricaGuardar()">' + btnGuardar + '</button></div>';
 
@@ -4862,17 +4978,15 @@ const AdminApp = (function() {
   }
 
   function fabricaSetBool(campo, val) { _fabWork[campo] = !!val; renderFabPreview(); }
-  function fabricaSetDivisor(val) {
-    _fabWork.divisor = val;
-    // El motor solo dibuja rombos si divisorTok.rombo existe (algunas bases no lo
-    // traen). Al elegir rombos, lo inyectamos para que la perilla funcione siempre.
-    if (val === 'rombos') {
-      if (!_fabWork.divisorTok) _fabWork.divisorTok = { ancho: '80px', alto: '2px', margin: '1.5rem auto', opacity: '1' };
-      if (!_fabWork.divisorTok.rombo) _fabWork.divisorTok.rombo = '◆';
-    }
-    renderFabPreview();
-  }
   function fabricaSetMeta(campo, val) { _fabWork[campo] = val; }
+
+  // Las 6 perillas decorativas → derivan tokens finos y repintan.
+  function fabricaSetDivisor(val)    { _fabAplicarDivisor(_fabWork, val);    renderFabPreview(); }
+  function fabricaSetDensidad(val)   { Object.assign(_fabWork, _FAB_DENSIDAD[val] || {}); _fabWork.densidad = val; renderFabPreview(); }
+  function fabricaSetEsquinas(val)   { _fabAplicarEsquinas(_fabWork, val);   renderFabPreview(); }
+  function fabricaSetCaja(val)       { _fabAplicarCaja(_fabWork, val);       renderFabPreview(); }
+  function fabricaSetOrnamentos(val) { _fabAplicarOrnamentos(_fabWork, val); renderFabPreview(); }
+  function fabricaSetFondoDeco(val)  { _fabAplicarFondoDeco(_fabWork, val);  renderFabPreview(); }
 
   function renderFabPreview() {
     const html = CartaRenderer.renderizar({
@@ -5241,6 +5355,11 @@ const AdminApp = (function() {
     fabricaSetFuente,
     fabricaSetBool,
     fabricaSetDivisor,
+    fabricaSetDensidad,
+    fabricaSetEsquinas,
+    fabricaSetCaja,
+    fabricaSetOrnamentos,
+    fabricaSetFondoDeco,
     fabricaSetMeta,
     fabricaCancelar,
     fabricaGuardar,
@@ -5390,6 +5509,11 @@ function fabricaSetColor(k, v) { AdminApp.fabricaSetColor(k, v); }
 function fabricaSetFuente(v) { AdminApp.fabricaSetFuente(v); }
 function fabricaSetBool(c, v) { AdminApp.fabricaSetBool(c, v); }
 function fabricaSetDivisor(v) { AdminApp.fabricaSetDivisor(v); }
+function fabricaSetDensidad(v) { AdminApp.fabricaSetDensidad(v); }
+function fabricaSetEsquinas(v) { AdminApp.fabricaSetEsquinas(v); }
+function fabricaSetCaja(v) { AdminApp.fabricaSetCaja(v); }
+function fabricaSetOrnamentos(v) { AdminApp.fabricaSetOrnamentos(v); }
+function fabricaSetFondoDeco(v) { AdminApp.fabricaSetFondoDeco(v); }
 function fabricaSetMeta(c, v) { AdminApp.fabricaSetMeta(c, v); }
 function fabricaCancelar() { AdminApp.fabricaCancelar(); }
 function fabricaGuardar() { AdminApp.fabricaGuardar(); }
