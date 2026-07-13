@@ -744,22 +744,54 @@ ${p.productoColumnGap ? `
 
 
   // ============================================================
+  // HIDRATACIÓN DESDE FIRESTORE (Fábrica, sub-paso 3)
+  // El editor lee la colección `pieles` de FS y la mergea acá sobre PRESETS.
+  // Las del código quedan de FALLBACK: si FS falla o una piel no vino, se usa
+  // la hardcodeada. generarCss NO cambia: consume el objeto venga de donde venga.
+  // ============================================================
+
+  function _esPielValida(p) {
+    // Lo mínimo que generarCss necesita para no romper.
+    return p && typeof p === 'object' && typeof p.id === 'string'
+      && _esObj(p.color) && _esObj(p.fuente);
+  }
+
+  function hidratar(arr) {
+    if (!Array.isArray(arr)) return 0;
+    var n = 0;
+    arr.forEach(function(p) {
+      if (_esPielValida(p)) { PRESETS[p.id] = p; n++; }
+    });
+    return n;
+  }
+
+  // ============================================================
   // API PÚBLICA
   // ============================================================
 
   return {
     PRESETS: PRESETS,
     generarCss: generarCss,
+    hidratar: hidratar,
     listar: function() {
-      return Object.keys(PRESETS).map(function(k) {
+      // Respeta `orden` y `activo` cuando vienen de FS; retrocompatible con las
+      // del código (que no los traen): mantienen el orden de inserción y se muestran.
+      return Object.keys(PRESETS).map(function(k, i) {
+        var p = PRESETS[k];
         return {
           id: k,
-          nombre: PRESETS[k].nombre,
-          descripcion: PRESETS[k].descripcion,
-          premium: PRESETS[k].premium,
-          rubro: PRESETS[k].rubro
+          nombre: p.nombre,
+          descripcion: p.descripcion,
+          premium: p.premium,
+          rubro: p.rubro,
+          _orden: (typeof p.orden === 'number') ? p.orden : (1000 + i),
+          _activo: (p.activo !== false)
         };
-      });
+      }).filter(function(t) { return t._activo; })
+        .sort(function(a, b) { return a._orden - b._orden; })
+        .map(function(t) {
+          return { id: t.id, nombre: t.nombre, descripcion: t.descripcion, premium: t.premium, rubro: t.rubro };
+        });
     }
   };
 

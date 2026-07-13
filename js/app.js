@@ -2507,11 +2507,32 @@ const AdminApp = (function() {
     document.getElementById('carta-edit-pie-mail').value = c.Pie_Mail || '';
     document.getElementById('carta-edit-notas').value = c.Notas || '';
 
-    // Selector de templates
+    // Selector de templates (pieles). Hidrata desde FS antes de pintar (cae al
+    // código si FS no responde). Await seguro: asegurarPielesFS nunca rechaza.
     state.cartaEditarTemplate = c.Template || 'minimalista';
+    await asegurarPielesFS();
     renderTemplatesGrid();
 
     document.getElementById('modal-carta-editar').classList.add('is-visible');
+  }
+
+  // Fábrica (sub-paso 3): hidrata el catálogo de pieles desde Firestore UNA vez
+  // (promesa cacheada). Si FS falla (reglas, auth, red), atrapa y cae al catálogo
+  // del código: el selector muestra igual las pieles hardcodeadas. Cero riesgo.
+  var _pielesFSPromise = null;
+  function asegurarPielesFS() {
+    if (_pielesFSPromise) return _pielesFSPromise;
+    _pielesFSPromise = (async function () {
+      try {
+        if (!window.GCFirestore || !GCFirestore.leerPieles || typeof GranCartaPieles === 'undefined') return;
+        const arr = await GCFirestore.leerPieles();
+        const n = GranCartaPieles.hidratar(arr);
+        console.log('[Pieles] hidratadas ' + n + ' pieles desde Firestore.');
+      } catch (e) {
+        console.warn('[Pieles] no se pudo leer de Firestore; uso el catálogo del código:', e && e.message);
+      }
+    })();
+    return _pielesFSPromise;
   }
 
   function renderTemplatesGrid() {

@@ -1524,6 +1524,25 @@
   }
 
   // ---------------------------------------------------------------------------
+  // PIELES (Fábrica, sub-paso 3) — catálogo de temas de carta desde Firestore.
+  // Ruta: pieles/{id} (id semántico). Cada doc = el objeto piel COMPLETO (16
+  // perillas + tokens finos + metadatos orden/activo/tipo). Devuelve el array
+  // ordenado por `orden`; GranCartaPieles.hidratar() lo mergea sobre las pieles
+  // del código (que quedan de fallback). Read gobernado por reglas v1.7 (cualquier
+  // logueado lee). Si algo falla, el caller cae al catálogo del código.
+  // ---------------------------------------------------------------------------
+  async function leerPieles() {
+    const snap = await db().collection('pieles').get();
+    return snap.docs
+      .map(function (d) {
+        const p = d.data();
+        if (!p.id) p.id = d.id;     // doc id = id semántico
+        return p;
+      })
+      .sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
+  }
+
+  // ---------------------------------------------------------------------------
   // PRECIOS EN MASA (pestaña "Precios" del editor). Actualiza el precio de VARIOS
   // productos de una carta en una sola pasada atómica (batch). cambios =
   // [{ idProducto, precio }]. Ruta: empresas/{emp}/cartas/{carta}/productos/{prod}.
@@ -1551,6 +1570,7 @@
     catalogoEliminar: catalogoEliminar,
     redondearPrecio: _redondearPrecio,
     actualizarPreciosMasivo: actualizarPreciosMasivo,
+    leerPieles: leerPieles,
     generarId: generarId,
     setEstadoProducto: setEstadoProducto,
     actualizarProducto: actualizarProducto,
