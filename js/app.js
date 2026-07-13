@@ -4898,6 +4898,18 @@ const AdminApp = (function() {
     if (nombre.length < 2) { AdminUI.toast('Poné un nombre a la piel', 'error'); return; }
     _fabWork.nombre = nombre;
 
+    // Red al editar una piel ORIGINAL del sistema (las 11 semilla; id no-SKN):
+    // pisarla afecta a las cartas que la elijan de acá en más. Confirmar.
+    if (!_fabEsNueva && !/^SKN-/.test(String(_fabId))) {
+      const ok = await AdminUI.confirm({
+        title: 'Editar piel del sistema',
+        message: 'Vas a modificar "' + nombre + '", una piel del catálogo del sistema. '
+          + 'Los cambios valen para las cartas que la elijan de ahora en más; las YA publicadas no cambian. ¿Seguir?',
+        okLabel: 'Guardar cambios', cancelLabel: 'Cancelar'
+      });
+      if (!ok) return;
+    }
+
     const btn = document.getElementById('fab-btn-guardar');
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
     try {
