@@ -314,9 +314,14 @@ const AdminApp = (function() {
     if (!confirmar) return;
 
     AdminUI.setLoading(true);
-    try {
-      await AdminAPI.cerrarSesion();
-    } catch (e) {}
+
+    // AVISO AL BACKEND = MEJOR ESFUERZO (14/7): NO bloqueamos la salida en la
+    // red a GAS. Antes esto era `await AdminAPI.cerrarSesion()` y, como `llamar()`
+    // hace fetch SIN timeout, si GAS colgaba el spinner quedaba para siempre y el
+    // 🚪 nunca salía. Ahora se dispara sin await (captura el token adentro ANTES de
+    // que lo borremos abajo) y seguimos derecho a borrar contexto + redirigir. El
+    // candado del logout ya está espejado en FS; perder este aviso no rompe nada.
+    try { AdminAPI.cerrarSesion(); } catch (e) {}
 
     // LOGOUT REAL (13/6): borra TODO el contexto, también el de la puerta
     // (app_jwt/app_mail), para que "cerrar sesión" SALGA de verdad y NO
