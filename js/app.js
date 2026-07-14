@@ -482,10 +482,13 @@ const AdminApp = (function() {
           <button class="btn btn-primary" onclick="iniciarWizardEmpresa()">+ Crear mi primera empresa</button>
         </div>
       `;
+      const countElVacio = document.getElementById('dash-sucursales-count');
+      if (countElVacio) countElVacio.textContent = '';
       return;
     }
 
     let html = '';
+    let totalLocales = 0;
     empresas.forEach(function(e) {
       const datosEmp = cartasPorEmpresa[e.Id_Empresa];
       // Si tenemos datos enriquecidos, los usamos. Si no, fallback a los planos.
@@ -493,15 +496,13 @@ const AdminApp = (function() {
         ? datosEmp.locales
         : locales.filter(function(l) { return l.Id_Empresa === e.Id_Empresa; });
       const cartasDisponibles = datosEmp ? datosEmp.cartas_disponibles : [];
+      totalLocales += localesDeEmpresa.length;
 
       html += `
         <div class="empresa-block">
           <div class="empresa-block-header">
             <div class="empresa-block-info">
-              <div class="empresa-block-name">${AdminUI.escapeHtml(e.Nombre_Comercial)}</div>
-              <div class="empresa-block-meta">
-                ${AdminUI.escapeHtml(e.Razon_Social)} · ${AdminUI.escapeHtml(e.CUIT || '')}
-              </div>
+              <div class="empresa-block-name"><span class="empresa-block-label">Empresa:</span> ${AdminUI.escapeHtml(e.Nombre_Comercial)}</div>
             </div>
             <div class="empresa-block-actions">
               <button class="btn btn-secondary btn-sm" onclick="abrirCartasEmpresa('${e.Id_Empresa}', '${AdminUI.escapeHtml(e.Nombre_Comercial)}')">
@@ -513,7 +514,6 @@ const AdminApp = (function() {
               <button class="btn btn-secondary btn-sm" onclick="abrirEquipo('${e.Id_Empresa}')">
                 👥 Equipo
               </button>
-              <span class="empresa-block-locales-count">${localesDeEmpresa.length} local(es)</span>
             </div>
           </div>
       `;
@@ -537,6 +537,14 @@ const AdminApp = (function() {
     });
 
     container.innerHTML = html;
+
+    // Contador de sucursales al lado del título "Sucursales"
+    const countEl = document.getElementById('dash-sucursales-count');
+    if (countEl) {
+      countEl.textContent = totalLocales > 0
+        ? ' · ' + totalLocales + ' ' + (totalLocales === 1 ? 'local' : 'locales')
+        : '';
+    }
   }
 
   function renderLocalCard(l, e, cartasDisponibles) {
@@ -568,10 +576,15 @@ const AdminApp = (function() {
         const audienceSlug = pub.Audience_Slug || '';
         const audienceKey = audienceSlug || 'default';
 
-        // Badge identificador
+        // Nombre del espacio: la default es "Principal"; el resto, el slug capitalizado.
+        const espacioNombre = esDefault
+          ? 'Principal'
+          : (audienceSlug.charAt(0).toUpperCase() + audienceSlug.slice(1));
+
+        // Badge identificador del espacio
         const badge = esDefault
-          ? '<span class="pub-badge pub-badge-default">⭐ DEFAULT</span>'
-          : '<span class="pub-badge pub-badge-audience">📍 ' + AdminUI.escapeHtml(audienceSlug.toUpperCase()) + '</span>';
+          ? '<span class="pub-badge pub-badge-default">Espacio: ' + AdminUI.escapeHtml(espacioNombre) + '</span>'
+          : '<span class="pub-badge pub-badge-audience">Espacio: ' + AdminUI.escapeHtml(espacioNombre) + '</span>';
 
         // Nombre para QR/PDF (sufijo audience cuando aplica)
         const nombreParaArchivo = audienceSlug
@@ -602,7 +615,7 @@ const AdminApp = (function() {
             <div class="publicacion-swap-row">
               <span class="publicacion-swap-label">Cambiar a:</span>
               <select class="publicacion-swap-select" id="${selectId}">
-                <option value="">— Elegí del catálogo —</option>
+                <option value="">Seleccionar la carta</option>
                 ${opciones}
               </select>
               <button class="btn btn-secondary btn-sm publicacion-swap-btn"
@@ -624,6 +637,9 @@ const AdminApp = (function() {
           <div class="publicacion-card${esDefault ? ' publicacion-default' : ''}">
             <div class="publicacion-header">
               ${badge}
+            </div>
+            <div class="publicacion-carta-activa">
+              <span class="publicacion-carta-activa-label">Carta activa:</span>
               <span class="publicacion-carta-nombre">${AdminUI.escapeHtml(pub.carta_nombre || '(sin nombre)')}</span>
               ${pub.carta_template ? '<span class="local-carta-template-tag">' + AdminUI.escapeHtml(pub.carta_template) + '</span>' : ''}
             </div>
@@ -658,9 +674,6 @@ const AdminApp = (function() {
 
       bloquePublicacionesHtml = `
         <div class="publicaciones-section">
-          <div class="publicaciones-section-title">
-            📺 Publicaciones activas (${publicacionesDelLocal.length})
-          </div>
           <div class="publicaciones-list">
             ${tarjetas}
           </div>
@@ -756,10 +769,13 @@ const AdminApp = (function() {
       <div class="local-card local-card-expanded">
         <div class="local-card-header">
           <div class="local-card-info">
-            <div class="local-card-name">${AdminUI.escapeHtml(l.Nombre)}</div>
+            <div class="local-card-name">📍 ${AdminUI.escapeHtml(l.Nombre)}</div>
             <div class="local-card-meta">
-              📍 ${AdminUI.escapeHtml(direccion)} ${ciudad ? '· ' + AdminUI.escapeHtml(ciudad) : ''}
+              ${AdminUI.escapeHtml(direccion)} ${ciudad ? '· ' + AdminUI.escapeHtml(ciudad) : ''}
             </div>
+          </div>
+          <div class="local-card-pubs-count">
+            📺 Publicaciones activas: <strong>${publicacionesDelLocal.length}</strong>
           </div>
         </div>
         ${bloquePublicacionesHtml}
