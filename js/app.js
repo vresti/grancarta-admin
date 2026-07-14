@@ -793,6 +793,13 @@ const AdminApp = (function() {
   function volverADashboard() {
     state.cartasContexto = null;
     AdminUI.mostrarPantalla('screen-dashboard');
+    // Re-pintar desde el state en memoria (publicar y demás ops lo dejan fresco).
+    // Sin esto, mostrarPantalla dejaba el DOM viejo → la "Carta activa" de un
+    // canal recién publicado se veía vieja hasta un full reload (Ctrl+Shift+R).
+    // Costo cero de FS: renderDashboard solo repinta memoria. Guarda: si por algún
+    // motivo no hay estructura cargada, re-leemos de FS.
+    if (state.estructura) renderDashboard();
+    else cargarDashboard();
   }
 
 
