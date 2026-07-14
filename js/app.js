@@ -3856,12 +3856,18 @@ const AdminApp = (function() {
   // VISTA PREVIA DE LA CARTA
   // ============================================================
 
-  function abrirVistaPrevia() {
+  async function abrirVistaPrevia() {
     const ctx = state.editorContexto;
     if (!ctx) {
       AdminUI.toast('Cargá una carta primero', 'error');
       return;
     }
+
+    // Hidrata las pieles de Firestore (Fábrica) antes de pintar. Si la carta usa
+    // una piel que vive SOLO en FS y aún no se hidrató PRESETS en esta sesión, sin
+    // esto la preview caería a 'minimalista'. Await seguro: nunca rechaza (cae al
+    // catálogo del código si FS falla). La promesa está cacheada: instantánea luego.
+    await asegurarPielesFS();
 
     // Datos para el renderer
     const datosCarta = {
