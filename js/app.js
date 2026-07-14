@@ -4733,26 +4733,32 @@ const AdminApp = (function() {
 
   function _fabRadio(w) { return w.esquinas === 'redondeadas' ? '14px' : '0'; }
 
+  // Color del marco: perilla propia (color.marco). Si no se eligió, cae al acento
+  // (comportamiento previo). El motor lee cartaMarco, no color.marco → no se toca.
+  function _fabColorMarco(w) {
+    return (w.color && (w.color.marco || w.color.acento)) || '#888888';
+  }
+
   // caja: genera (o quita el efecto de) el cartaMarco desde los colores.
   function _fabAplicarCaja(w, val) {
     w.caja = val;
     if (val === 'ninguna') return;   // el motor ignora cartaMarco cuando caja=ninguna
-    var acento = (w.color && w.color.acento) || '#888888';
+    var marco = _fabColorMarco(w);
     var fondo = (w.color && w.color.fondo) || '#ffffff';
     var base = w.cartaMarco || {};
     if (val === 'borde') {
       w.cartaMarco = Object.assign({}, base, {
-        border: '1px solid ' + acento, radius: _fabRadio(w),
+        border: '1px solid ' + marco, radius: _fabRadio(w),
         padding: '3rem 2.25rem', paddingMobile: '2rem 1.5rem'
       });
     } else if (val === 'doble-marco') {
       var tinte = _fabRgba(_fabAclarar(fondo, 6), 0.6);
       w.cartaMarco = Object.assign({}, base, {
         bg: tinte, padding: '3rem 2.5rem', paddingMobile: '2rem 1.5rem',
-        border: '2px solid ' + acento, radius: _fabRadio(w),
-        shadow: '0 0 0 8px ' + tinte + ', 0 0 0 10px ' + acento + ', 0 10px 40px ' + _fabRgba('#000000', 0.15),
-        shadowMobile: '0 0 0 6px ' + tinte + ', 0 0 0 8px ' + acento,
-        ornamento: base.ornamento || '✦', ornamentoColor: acento
+        border: '2px solid ' + marco, radius: _fabRadio(w),
+        shadow: '0 0 0 8px ' + tinte + ', 0 0 0 10px ' + marco + ', 0 10px 40px ' + _fabRgba('#000000', 0.15),
+        shadowMobile: '0 0 0 6px ' + tinte + ', 0 0 0 8px ' + marco,
+        ornamento: base.ornamento || '✦', ornamentoColor: marco
       });
     }
   }
@@ -4767,10 +4773,17 @@ const AdminApp = (function() {
   function _fabAplicarOrnamentos(w, val) {
     w.ornamentos = val;
     if (val !== 'esquinas-divisor') return;
-    var acento = (w.color && w.color.acento) || '#888888';
-    if (!w.cartaMarco) w.cartaMarco = { border: '1px solid ' + acento, radius: _fabRadio(w), padding: '3rem 2.25rem', paddingMobile: '2rem 1.5rem' };
+    var marco = _fabColorMarco(w);
+    if (!w.cartaMarco) w.cartaMarco = { border: '1px solid ' + marco, radius: _fabRadio(w), padding: '3rem 2.25rem', paddingMobile: '2rem 1.5rem' };
     if (!w.cartaMarco.ornamento) w.cartaMarco.ornamento = '✦';
-    w.cartaMarco.ornamentoColor = acento;
+    w.cartaMarco.ornamentoColor = marco;
+  }
+
+  // Re-genera el marco/ornamentos cuando cambia un color del que dependen
+  // (color del marco, o el fondo que tiñe el doble-marco). Solo si ya hay marco.
+  function _fabResyncMarco(w) {
+    if (w.caja && w.caja !== 'ninguna') _fabAplicarCaja(w, w.caja);
+    if (w.ornamentos === 'esquinas-divisor') _fabAplicarOrnamentos(w, w.ornamentos);
   }
 
   // fondoDeco: genera color.fondoImage (el motor lo pinta si existe).
@@ -4911,8 +4924,12 @@ const AdminApp = (function() {
       + '<div class="fab-campo"><label class="fab-label">Divisor</label>'
       + selPerilla('fabricaSetDivisor', (p.divisor || 'linea'), [['linea', 'Línea simple'], ['rombos', 'Rombos ◆'], ['nada', 'Sin divisor']]) + '</div>';
 
+    const marcoColorVal = (p.color && (p.color.marco || p.color.acento)) || '#888888';
     const decorativosHtml = '<div class="fab-campo"><label class="fab-label">Caja / marco</label>'
       + selPerilla('fabricaSetCaja', (p.caja || 'ninguna'), [['ninguna', 'Ninguna'], ['borde', 'Borde simple'], ['doble-marco', 'Doble marco']]) + '</div>'
+      + '<div class="fab-color-row"><label class="fab-label">Color del marco</label>'
+      + '<div class="fab-color-ctl"><input type="color" value="' + _fabHex(marcoColorVal) + '" oninput="fabricaSetColorMarco(this.value)">'
+      + '<input type="text" class="fab-color-hex" value="' + AdminUI.escapeHtml(marcoColorVal) + '" onchange="fabricaSetColorMarco(this.value)"></div></div>'
       + '<div class="fab-campo"><label class="fab-label">Esquinas</label>'
       + selPerilla('fabricaSetEsquinas', (p.esquinas || 'rectas'), [['rectas', 'Rectas'], ['redondeadas', 'Redondeadas']]) + '</div>'
       + '<div class="fab-campo"><label class="fab-label">Ornamentos</label>'
@@ -4967,6 +4984,18 @@ const AdminApp = (function() {
     const c = FAB_COLORES.find(function (x) { return x.key === key; });
     if (!c || !_fabWork.color) return;
     c.campos.forEach(function (campo) { _fabWork.color[campo] = valor; });
+    // El fondo decorativo y el doble-marco se GENERAN desde estos colores; si no
+    // se regeneran, la imagen/borde viejo (con el color anterior) tapa el nuevo.
+    if (key === 'fondo' || key === 'acento') _fabAplicarFondoDeco(_fabWork, _fabWork.fondoDeco || 'plano');
+    if (key === 'fondo') _fabResyncMarco(_fabWork);
+    renderFabPreview();
+  }
+
+  // Perilla nueva: color propio del marco (independiente del acento).
+  function fabricaSetColorMarco(valor) {
+    if (!_fabWork || !_fabWork.color) return;
+    _fabWork.color.marco = valor;
+    _fabResyncMarco(_fabWork);
     renderFabPreview();
   }
 
@@ -5352,6 +5381,7 @@ const AdminApp = (function() {
     fabricaEditar,
     fabricaCambiarBase,
     fabricaSetColor,
+    fabricaSetColorMarco,
     fabricaSetFuente,
     fabricaSetBool,
     fabricaSetDivisor,
@@ -5506,6 +5536,7 @@ function fabricaNueva() { AdminApp.fabricaNueva(); }
 function fabricaEditar(id) { AdminApp.fabricaEditar(id); }
 function fabricaCambiarBase(id) { AdminApp.fabricaCambiarBase(id); }
 function fabricaSetColor(k, v) { AdminApp.fabricaSetColor(k, v); }
+function fabricaSetColorMarco(v) { AdminApp.fabricaSetColorMarco(v); }
 function fabricaSetFuente(v) { AdminApp.fabricaSetFuente(v); }
 function fabricaSetBool(c, v) { AdminApp.fabricaSetBool(c, v); }
 function fabricaSetDivisor(v) { AdminApp.fabricaSetDivisor(v); }
