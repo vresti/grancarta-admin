@@ -2708,7 +2708,14 @@ const AdminApp = (function() {
     try {
       if (!window.GCFirestore) throw new Error('módulo Firestore no cargado');
       if (!idEmpresa) throw new Error('falta idEmpresa en el contexto');
+      // Hidratar las pieles de FS (Fábrica) EN PARALELO con la lectura de la carta.
+      // Deja PRESETS listo antes de cualquier rehorneo posterior (publicar, precios,
+      // editar, toggle) → la piel congelada en menus_publicados es la correcta y no
+      // cae a 'minimalista'. Await seguro: asegurarPielesFS nunca rechaza. Se solapa
+      // con leerCartaCompleta bajo el mismo spinner → sin latencia extra.
+      const pielesReady = asegurarPielesFS();
       datos = await window.GCFirestore.leerCartaCompleta(idEmpresa, idCarta);
+      await pielesReady;
     } catch (e) {
       AdminUI.setLoading(false);
       console.error('[Firestore] error leyendo la carta:', e && e.message);
