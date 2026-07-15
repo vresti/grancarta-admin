@@ -519,6 +519,9 @@ const AdminApp = (function() {
               <button class="btn btn-secondary btn-sm" onclick="abrirEquipo('${e.Id_Empresa}')">
                 👥 Equipo
               </button>
+              <button class="btn btn-secondary btn-sm" onclick="iniciarWizardEmpresa()">
+                ➕ Empresa
+              </button>
             </div>
           </div>
       `;
