@@ -931,27 +931,33 @@
   // ---------------------------------------------------------------------------
   // Hornea UN local: lee empresa, local, publicaciones activas, y por cada canal
   // arma menus_publicados (doble clave id + slug). Espejo del hornear.js de Node.
+  // empPre (opcional): datos de la empresa ya leídos por el caller
+  // (hornearLocalesDeCarta) para no re-leer el doc por cada local.
+  // Paralelo (22/7): empresa+local se leen juntos y los canales se hornean
+  // juntos (seguro: cada canal activo escribe claves distintas, invariante I3).
   // ---------------------------------------------------------------------------
-  async function hornearLocal(idEmpresa, idLocal) {
+  async function hornearLocal(idEmpresa, idLocal, empPre) {
     const D = db();
-    const empSnap = await D.collection('empresas').doc(idEmpresa).get();
     const locRef  = D.collection('empresas').doc(idEmpresa).collection('locales').doc(idLocal);
-    const locSnap = await locRef.get();
-    if (!empSnap.exists || !locSnap.exists) {
+    const lecturas = await Promise.all([
+      empPre ? null : D.collection('empresas').doc(idEmpresa).get(),
+      locRef.get()
+    ]);
+    const empSnap = lecturas[0];
+    const locSnap = lecturas[1];
+    if ((!empPre && !empSnap.exists) || !locSnap.exists) {
       throw new Error('Falta empresa o local: ' + idEmpresa + '/' + idLocal);
     }
-    const emp = empSnap.data();
+    const emp = empPre || empSnap.data();
     const loc = locSnap.data();
 
     const pubsSnap = await locRef.collection('publicaciones').where('estado', '==', 'activa').get();
     if (pubsSnap.empty) return { canales: 0 };
 
-    let canales = 0;
-    for (const pubDoc of pubsSnap.docs) {
-      await hornearCanal(idEmpresa, idLocal, emp, loc, pubDoc.data());
-      canales++;
-    }
-    return { canales: canales };
+    await Promise.all(pubsSnap.docs.map(function (pubDoc) {
+      return hornearCanal(idEmpresa, idLocal, emp, loc, pubDoc.data());
+    }));
+    return { canales: pubsSnap.docs.length };
   }
 
   async function hornearCanal(idEmpresa, idLocal, emp, loc, pub) {
@@ -965,8 +971,12 @@
     if (!cartaSnap.exists) return;
     const carta = cartaSnap.data();
 
-    const seccSnap = await cartaRef.collection('secciones').get();
-    const prodSnap = await cartaRef.collection('productos').get();
+    const subSnaps = await Promise.all([
+      cartaRef.collection('secciones').get(),
+      cartaRef.collection('productos').get()
+    ]);
+    const seccSnap = subSnaps[0];
+    const prodSnap = subSnaps[1];
     const secciones = seccSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).sort(ordenar);
     const productos = prodSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
       .filter(function (p) { return p.estado_visibilidad === 'visible'; }).sort(ordenar);
@@ -1012,21 +1022,28 @@
 
     const idKey = idLocal + '_' + audienceKey;
     const slugKey = (emp.slug || '') + '__' + (loc.slug || '') + '__' + audienceKey;
-    await D.collection('menus_publicados').doc(idKey).set(doc);
-    await D.collection('menus_publicados').doc(slugKey).set(doc);
+    await Promise.all([
+      D.collection('menus_publicados').doc(idKey).set(doc),
+      D.collection('menus_publicados').doc(slugKey).set(doc)
+    ]);
   }
 
   // ---------------------------------------------------------------------------
   // Hornea TODOS los locales (de una empresa) que publican una carta dada.
   // localesEmpresa: [{ id_local, id_carta_publicada }] — lista provista por app.js
   // (de su estado de publicaciones). Rehornea solo los que tengan esa carta.
+  // Paralelo (22/7): la empresa se lee UNA vez (antes: 1 read por local) y los
+  // locales se hornean juntos (antes: en serie).
   // ---------------------------------------------------------------------------
   async function hornearLocalesDeCarta(idEmpresa, idCarta, localesConEstaCarta) {
-    let total = 0;
-    for (const idLocal of localesConEstaCarta) {
-      const r = await hornearLocal(idEmpresa, idLocal);
-      total += (r.canales || 0);
-    }
+    const empSnap = await db().collection('empresas').doc(idEmpresa).get();
+    if (!empSnap.exists) throw new Error('Falta empresa: ' + idEmpresa);
+    const empPre = empSnap.data();
+
+    const resultados = await Promise.all(localesConEstaCarta.map(function (idLocal) {
+      return hornearLocal(idEmpresa, idLocal, empPre);
+    }));
+    const total = resultados.reduce(function (acc, r) { return acc + (r.canales || 0); }, 0);
     return { locales: localesConEstaCarta.length, canales: total };
   }
 
