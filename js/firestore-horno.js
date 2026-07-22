@@ -156,16 +156,22 @@
   // LECTURA del editor: lee carta + secciones + TODOS los productos de Firestore
   // y devuelve la forma EXACTA que espera renderEditor (campos con Mayúscula).
   // A diferencia del horno, NO filtra por estado (el editor gestiona todos).
+  // Paralelo (22/7): las 3 lecturas son independientes → un solo viaje a FS
+  // (antes: 3 en serie). La forma devuelta no cambia.
   // ---------------------------------------------------------------------------
   async function leerCartaCompleta(idEmpresa, idCarta) {
     const D = db();
     const cartaRef = D.collection('empresas').doc(idEmpresa).collection('cartas').doc(idCarta);
-    const cartaSnap = await cartaRef.get();
+    const snaps = await Promise.all([
+      cartaRef.get(),
+      cartaRef.collection('secciones').get(),
+      cartaRef.collection('productos').get()
+    ]);
+    const cartaSnap = snaps[0];
+    const seccSnap = snaps[1];
+    const prodSnap = snaps[2];
     if (!cartaSnap.exists) throw new Error('Carta no encontrada en Firestore: ' + idCarta);
     const c = cartaSnap.data();
-
-    const seccSnap = await cartaRef.collection('secciones').get();
-    const prodSnap = await cartaRef.collection('productos').get();
 
     // Productos por sección (forma del front), sin filtrar estado.
     const productos = prodSnap.docs.map(function (d) {
